@@ -124,6 +124,7 @@ export default function PlayerSessionView({ sessionId, onLeave }: Props) {
       {session.status === 'finished' && winner && (
         <WinnerView
           winnerName={winner.profile?.display_name ?? 'Gagnant'}
+          players={players.map(p => ({ name: p.profile?.display_name ?? 'Joueur', score: p.score }))}
           onReset={() => {}}
           onClose={() => {}}
           isAdmin={false}
