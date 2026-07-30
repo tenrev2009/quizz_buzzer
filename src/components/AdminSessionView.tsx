@@ -90,6 +90,7 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
     if (!currentRound) return;
     const { error } = await supabase.rpc('resolve_round', { p_round_id: currentRound.id, p_correct: correct });
     if (error) throw error;
+    if (correct && isQcm) fetchPlayedQuestions();
   });
 
   const resolveQcm = () => run(async () => {
@@ -99,12 +100,26 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
     fetchPlayedQuestions();
   });
 
+  const skipQuestion = () => run(async () => {
+    if (!currentRound) return;
+    const { error } = await supabase.rpc('skip_qcm_round', { p_round_id: currentRound.id });
+    if (error) throw error;
+    fetchPlayedQuestions();
+  });
+
   const nextQuestion = () => run(async () => {
-    const nextQ = questions.find(q => !playedQuestionIds.has(q.id));
+    const { data: closedRounds } = await supabase
+      .from('rounds')
+      .select('question_id')
+      .eq('session_id', sessionId)
+      .eq('status', 'closed');
+    const played = new Set((closedRounds ?? []).map(r => r.question_id).filter(Boolean));
+    setPlayedQuestionIds(played);
+
+    const nextQ = questions.find(q => !played.has(q.id));
     if (nextQ) {
       const { error } = await supabase.rpc('start_qcm_round', { p_session_id: sessionId, p_question_id: nextQ.id });
       if (error) throw error;
-      fetchPlayedQuestions();
     } else {
       const { error } = await supabase
         .from('quiz_sessions')
@@ -273,6 +288,9 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                     <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5">
                       <p className="text-xs uppercase tracking-wider text-blue-600 font-semibold mb-2">
                         Question {questions.findIndex(q => q.id === currentQuestion!.id) + 1}/{questions.length}
+                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded bg-amber-100 text-amber-700 text-xs font-bold normal-case">
+                          {currentQuestion.question_type === 'choice_2' ? '1 pt' : currentQuestion.question_type === 'choice_4' ? '2 pts' : '3 pts'}
+                        </span>
                       </p>
                       <p className="text-lg font-bold text-slate-900">{currentQuestion.question_text}</p>
                       {currentQuestion.options && (
@@ -313,13 +331,22 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                     </div>
 
                     {currentRound.status === 'open' && (
-                      <button
-                        onClick={resolveQcm}
-                        disabled={loading}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 disabled:opacity-50 transition"
-                      >
-                        <Check className="w-5 h-5" /> Terminer et attribuer les points
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={resolveQcm}
+                          disabled={loading}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 disabled:opacity-50 transition"
+                        >
+                          <Check className="w-5 h-5" /> Attribuer les points
+                        </button>
+                        <button
+                          onClick={skipQuestion}
+                          disabled={loading}
+                          className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-200 text-slate-700 font-semibold rounded-lg hover:bg-slate-300 disabled:opacity-50 transition"
+                        >
+                          <ChevronRight className="w-5 h-5" /> Passer
+                        </button>
+                      </div>
                     )}
 
                     {currentRound.status === 'closed' && (
@@ -374,6 +401,15 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                             <X className="w-5 h-5" /> Mauvaise reponse
                           </button>
                         </div>
+                        {isQcm && (
+                          <button
+                            onClick={skipQuestion}
+                            disabled={loading}
+                            className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 bg-slate-200 text-slate-700 font-semibold rounded-lg hover:bg-slate-300 disabled:opacity-50 transition text-sm"
+                          >
+                            <ChevronRight className="w-4 h-4" /> Passer cette question
+                          </button>
+                        )}
                       </div>
                     )}
                   </>
