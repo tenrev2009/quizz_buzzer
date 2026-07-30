@@ -17,7 +17,7 @@ async function hashHex(input: string) {
 async function guestCreds(code: string, name: string) {
   const c = code.trim().toUpperCase();
   const n = slug(name);
-  const email = `guest_${c}_${n}@quiz-guest.local`;
+  const email = `guest_${c.toLowerCase()}_${n}@quiz-guest.local`;
   const h = await hashHex(`quizbuzz:${c}:${n}`);
   const password = `Pg_${h.slice(0, 24)}`;
   return { email, password };
@@ -132,8 +132,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       p_code: cleanCode,
     });
     if (jErr) throw new Error('Session: ' + jErr.message);
-    await loadProfile(uid);
+
     setActiveSessionId(sid as string);
+    await loadProfile(uid);
   };
 
   const signOut = async () => {

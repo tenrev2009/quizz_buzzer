@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AuthScreen from './components/AuthScreen';
 import AdminDashboard from './components/AdminDashboard';
@@ -6,12 +5,6 @@ import PlayerSessionView from './components/PlayerSessionView';
 
 function Shell() {
   const { loading, userId, profile, activeSessionId, setActiveSessionId, signOut } = useAuth();
-
-  useEffect(() => {
-    if (!loading && profile?.role === 'player' && !activeSessionId) {
-      signOut();
-    }
-  }, [loading, profile, activeSessionId, signOut]);
 
   if (loading) {
     return (
@@ -35,7 +28,6 @@ function Shell() {
       />
     );
   }
-  // Player without a session (rare: refresh) — sign them out
   return <AuthScreen />;
 }
 
