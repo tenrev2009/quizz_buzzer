@@ -8,17 +8,29 @@ function slug(s: string) {
   return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-async function hashHex(input: string) {
-  const buf = new TextEncoder().encode(input);
-  const out = await crypto.subtle.digest('SHA-256', buf);
-  return Array.from(new Uint8Array(out)).map(b => b.toString(16).padStart(2, '0')).join('');
+function simpleHash(input: string): string {
+  let h = 0;
+  for (let i = 0; i < input.length; i++) {
+    h = ((h << 5) - h + input.charCodeAt(i)) | 0;
+  }
+  const h2 = Math.abs(h);
+  const hex = h2.toString(16).padStart(8, '0');
+  let result = hex;
+  for (let round = 1; round < 4; round++) {
+    let rh = round * 2654435761;
+    for (let i = 0; i < input.length; i++) {
+      rh = ((rh << 5) - rh + input.charCodeAt(i) + round) | 0;
+    }
+    result += Math.abs(rh).toString(16).padStart(8, '0');
+  }
+  return result;
 }
 
-async function guestCreds(code: string, name: string) {
+function guestCreds(code: string, name: string) {
   const c = code.trim().toUpperCase();
   const n = slug(name);
   const email = `guest_${c.toLowerCase()}_${n}@quiz-guest.local`;
-  const h = await hashHex(`quizbuzz:${c}:${n}`);
+  const h = simpleHash(`quizbuzz:${c}:${n}`);
   const password = `Pg_${h.slice(0, 24)}`;
   return { email, password };
 }
@@ -103,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!cleanName) throw new Error('Nom requis');
     if (!cleanCode) throw new Error('Code requis');
 
-    const { email, password } = await guestCreds(cleanCode, cleanName);
+    const { email, password } = guestCreds(cleanCode, cleanName);
 
     let uid: string | null = null;
     const signIn = await supabase.auth.signInWithPassword({ email, password });
