@@ -17,6 +17,7 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
   const [tab, setTab] = useState<'game' | 'questions'>('game');
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [answers, setAnswers] = useState<{ player_id: string; answer_index: number }[]>([]);
+  const [playedQuestionIds, setPlayedQuestionIds] = useState<Set<string>>(new Set());
 
   const isQcm = session?.game_mode === 'qcm';
 
@@ -29,6 +30,16 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
     setQuestions((data ?? []) as QuizQuestion[]);
   };
 
+  const fetchPlayedQuestions = async () => {
+    const { data } = await supabase
+      .from('rounds')
+      .select('question_id')
+      .eq('session_id', sessionId)
+      .eq('status', 'closed')
+      .not('question_id', 'is', null);
+    setPlayedQuestionIds(new Set((data ?? []).map((r: { question_id: string }) => r.question_id)));
+  };
+
   const fetchAnswers = async (roundId: string) => {
     const { data } = await supabase
       .from('player_answers')
@@ -38,7 +49,10 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
   };
 
   useEffect(() => {
-    if (isQcm) fetchQuestions();
+    if (isQcm) {
+      fetchQuestions();
+      fetchPlayedQuestions();
+    }
   }, [sessionId, isQcm]);
 
   useEffect(() => {
@@ -86,6 +100,15 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
     if (!currentRound) return;
     const { error } = await supabase.rpc('resolve_qcm_round', { p_round_id: currentRound.id });
     if (error) throw error;
+    fetchPlayedQuestions();
+  });
+
+  const nextQuestion = () => run(async () => {
+    const { error } = await supabase
+      .from('quiz_sessions')
+      .update({ current_round_id: null })
+      .eq('id', sessionId);
+    if (error) throw error;
   });
 
   const resetRound = () => run(async () => {
@@ -119,10 +142,6 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
   const currentQuestion = currentRound?.question_id
     ? questions.find(q => q.id === currentRound.question_id)
     : null;
-
-  const playedQuestionIds = new Set<string>();
-  // We track which questions have been used (simplified: current round question)
-  if (currentRound?.question_id) playedQuestionIds.add(currentRound.question_id);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -214,27 +233,31 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                         <p className="text-slate-400 text-sm">Aucune question. Allez dans l'onglet Questions pour en ajouter.</p>
                       </div>
                     )}
-                    {questions.map((q, idx) => (
-                      <button
-                        key={q.id}
-                        onClick={() => startQcmRound(q.id)}
-                        disabled={loading}
-                        className="w-full flex items-center gap-3 p-4 bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 rounded-lg transition text-left disabled:opacity-50 group"
-                      >
-                        <span className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 font-bold text-sm flex items-center justify-center flex-shrink-0">
-                          {idx + 1}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-900 truncate">
-                            {q.question_text || 'Question sans titre'}
-                          </p>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            {q.question_type === 'buzzer' ? 'Buzzer' : q.question_type === 'choice_2' ? '2 choix' : '4 choix'}
-                          </p>
-                        </div>
-                        <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-amber-500 transition" />
-                      </button>
-                    ))}
+                    {questions.map((q, idx) => {
+                      const played = playedQuestionIds.has(q.id);
+                      return (
+                        <button
+                          key={q.id}
+                          onClick={() => startQcmRound(q.id)}
+                          disabled={loading || played}
+                          className={`w-full flex items-center gap-3 p-4 border rounded-lg transition text-left group ${played ? 'bg-green-50 border-green-200 opacity-70' : 'bg-slate-50 hover:bg-amber-50 border-slate-200 hover:border-amber-300 disabled:opacity-50'}`}
+                        >
+                          <span className={`w-8 h-8 rounded-full font-bold text-sm flex items-center justify-center flex-shrink-0 ${played ? 'bg-green-200 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {played ? <Check className="w-4 h-4" /> : idx + 1}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-medium truncate ${played ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
+                              {q.question_text || 'Question sans titre'}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {q.question_type === 'buzzer' ? 'Buzzer' : q.question_type === 'choice_2' ? '2 choix' : '4 choix'}
+                            </p>
+                          </div>
+                          {!played && <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-amber-500 transition" />}
+                          {played && <span className="text-xs text-green-600 font-medium">Termine</span>}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -288,6 +311,16 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                         className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 disabled:opacity-50 transition"
                       >
                         <Check className="w-5 h-5" /> Terminer et attribuer les points
+                      </button>
+                    )}
+
+                    {currentRound.status === 'closed' && (
+                      <button
+                        onClick={nextQuestion}
+                        disabled={loading}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-400 text-slate-900 font-bold rounded-lg hover:bg-amber-300 disabled:opacity-50 transition"
+                      >
+                        <ChevronRight className="w-5 h-5" /> Question suivante
                       </button>
                     )}
                   </div>
