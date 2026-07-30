@@ -33,6 +33,9 @@ export default function WinnerView({ winnerName, onReset, onClose, isAdmin }: Pr
             </button>
           </div>
         )}
+        {!isAdmin && (
+          <p className="text-slate-400 text-sm mt-4">En attente de l'administrateur...</p>
+        )}
       </div>
     </div>
   );

@@ -125,7 +125,7 @@ export default function PlayerSessionView({ sessionId, onLeave }: Props) {
         <WinnerView
           winnerName={winner.profile?.display_name ?? 'Gagnant'}
           onReset={() => {}}
-          onClose={onLeave}
+          onClose={() => {}}
           isAdmin={false}
         />
       )}

@@ -120,6 +120,7 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
     if (!confirm('Reinitialiser la partie et les scores ?')) return;
     const { error } = await supabase.rpc('reset_game', { p_session_id: sessionId });
     if (error) throw error;
+    setPlayedQuestionIds(new Set());
   });
 
   const copyCode = () => {
