@@ -85,10 +85,6 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
     if (error) throw error;
   });
 
-  const startQcmRound = (questionId: string) => run(async () => {
-    const { error } = await supabase.rpc('start_qcm_round', { p_session_id: sessionId, p_question_id: questionId });
-    if (error) throw error;
-  });
 
   const resolve = (correct: boolean) => run(async () => {
     if (!currentRound) return;
@@ -104,11 +100,18 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
   });
 
   const nextQuestion = () => run(async () => {
-    const { error } = await supabase
-      .from('quiz_sessions')
-      .update({ current_round_id: null })
-      .eq('id', sessionId);
-    if (error) throw error;
+    const nextQ = questions.find(q => !playedQuestionIds.has(q.id));
+    if (nextQ) {
+      const { error } = await supabase.rpc('start_qcm_round', { p_session_id: sessionId, p_question_id: nextQ.id });
+      if (error) throw error;
+      fetchPlayedQuestions();
+    } else {
+      const { error } = await supabase
+        .from('quiz_sessions')
+        .update({ current_round_id: null })
+        .eq('id', sessionId);
+      if (error) throw error;
+    }
   });
 
   const resetRound = () => run(async () => {
@@ -225,40 +228,42 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                   </div>
                 )}
 
-                {/* No current round - QCM mode: pick a question */}
+                {/* No current round - QCM mode: start or all done */}
                 {!currentRound && isQcm && (
-                  <div className="space-y-3">
-                    <p className="text-slate-500 text-sm mb-3">Choisissez une question a lancer :</p>
+                  <div className="text-center py-8">
                     {questions.length === 0 && (
-                      <div className="text-center py-6">
-                        <p className="text-slate-400 text-sm">Aucune question. Allez dans l'onglet Questions pour en ajouter.</p>
+                      <div>
+                        <p className="text-slate-400 mb-2">Aucune question preparee</p>
+                        <p className="text-xs text-slate-400">Allez dans l'onglet Questions pour en ajouter.</p>
                       </div>
                     )}
-                    {questions.map((q, idx) => {
-                      const played = playedQuestionIds.has(q.id);
-                      return (
+                    {questions.length > 0 && questions.every(q => playedQuestionIds.has(q.id)) && (
+                      <div>
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
+                          <Check className="w-8 h-8 text-green-600" />
+                        </div>
+                        <p className="text-slate-700 font-semibold text-lg">Toutes les questions ont ete jouees !</p>
+                        <p className="text-slate-500 text-sm mt-1">{playedQuestionIds.size}/{questions.length} questions terminees</p>
+                      </div>
+                    )}
+                    {questions.length > 0 && !questions.every(q => playedQuestionIds.has(q.id)) && (
+                      <div>
+                        <p className="text-slate-500 mb-4">
+                          {playedQuestionIds.size === 0
+                            ? `${questions.length} question${questions.length > 1 ? 's' : ''} prete${questions.length > 1 ? 's' : ''}`
+                            : `${playedQuestionIds.size}/${questions.length} questions jouees`
+                          }
+                        </p>
                         <button
-                          key={q.id}
-                          onClick={() => startQcmRound(q.id)}
-                          disabled={loading || played}
-                          className={`w-full flex items-center gap-3 p-4 border rounded-lg transition text-left group ${played ? 'bg-green-50 border-green-200 opacity-70' : 'bg-slate-50 hover:bg-amber-50 border-slate-200 hover:border-amber-300 disabled:opacity-50'}`}
+                          onClick={nextQuestion}
+                          disabled={loading}
+                          className="inline-flex items-center gap-2 px-6 py-3 bg-amber-400 text-slate-900 font-bold rounded-lg hover:bg-amber-300 disabled:opacity-50 transition"
                         >
-                          <span className={`w-8 h-8 rounded-full font-bold text-sm flex items-center justify-center flex-shrink-0 ${played ? 'bg-green-200 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                            {played ? <Check className="w-4 h-4" /> : idx + 1}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-medium truncate ${played ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
-                              {q.question_text || 'Question sans titre'}
-                            </p>
-                            <p className="text-xs text-slate-500 mt-0.5">
-                              {q.question_type === 'buzzer' ? 'Buzzer' : q.question_type === 'choice_2' ? '2 choix' : '4 choix'}
-                            </p>
-                          </div>
-                          {!played && <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-amber-500 transition" />}
-                          {played && <span className="text-xs text-green-600 font-medium">Termine</span>}
+                          <Play className="w-5 h-5" />
+                          {playedQuestionIds.size === 0 ? 'Lancer la partie' : 'Question suivante'}
                         </button>
-                      );
-                    })}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -266,7 +271,9 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                 {currentRound && isQcm && currentQuestion && currentQuestion.question_type !== 'buzzer' && (
                   <div className="space-y-4">
                     <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5">
-                      <p className="text-xs uppercase tracking-wider text-blue-600 font-semibold mb-2">Question en cours</p>
+                      <p className="text-xs uppercase tracking-wider text-blue-600 font-semibold mb-2">
+                        Question {questions.findIndex(q => q.id === currentQuestion!.id) + 1}/{questions.length}
+                      </p>
                       <p className="text-lg font-bold text-slate-900">{currentQuestion.question_text}</p>
                       {currentQuestion.options && (
                         <div className="mt-3 grid grid-cols-2 gap-2">
