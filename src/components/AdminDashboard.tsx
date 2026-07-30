@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
-import type { QuizSession } from '../types';
-import { Plus, LogOut, Zap, Play, Trash2 } from 'lucide-react';
+import type { GameMode, QuizSession } from '../types';
+import { Plus, LogOut, Zap, Play, Trash2, HelpCircle, Radio } from 'lucide-react';
 import AdminSessionView from './AdminSessionView';
 
 function randomCode() {
@@ -16,6 +16,7 @@ export default function AdminDashboard() {
   const [showNew, setShowNew] = useState(false);
   const [name, setName] = useState('');
   const [target, setTarget] = useState(5);
+  const [gameMode, setGameMode] = useState<GameMode>('buzzer');
   const [err, setErr] = useState<string | null>(null);
 
   const load = async () => {
@@ -38,7 +39,7 @@ export default function AdminDashboard() {
       }
       const { data, error } = await supabase
         .from('quiz_sessions')
-        .insert({ admin_id: profile.id, name: name || 'Nouvelle session', code, target_score: target })
+        .insert({ admin_id: profile.id, name: name || 'Nouvelle session', code, target_score: target, game_mode: gameMode })
         .select('*')
         .single();
       if (error) throw error;
@@ -102,7 +103,7 @@ export default function AdminDashboard() {
 
         {showNew && (
           <form onSubmit={create} className="bg-white rounded-xl border border-slate-200 p-6 mb-6 shadow-sm">
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-3 gap-4">
               <div>
                 <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Nom de session</label>
                 <input
@@ -119,6 +120,25 @@ export default function AdminDashboard() {
                   onChange={e => setTarget(parseInt(e.target.value) || 5)}
                   className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400"
                 />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Mode de jeu</label>
+                <div className="mt-1 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setGameMode('buzzer')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition ${gameMode === 'buzzer' ? 'bg-amber-400 border-amber-400 text-slate-900' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <Radio className="w-4 h-4" /> Buzzer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGameMode('qcm')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition ${gameMode === 'qcm' ? 'bg-amber-400 border-amber-400 text-slate-900' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <HelpCircle className="w-4 h-4" /> QCM
+                  </button>
+                </div>
               </div>
             </div>
             {err && <div className="mt-3 text-sm text-red-600">{err}</div>}
@@ -156,7 +176,12 @@ export default function AdminDashboard() {
               <div className="bg-slate-50 rounded-lg px-3 py-2 mb-3 font-mono text-sm tracking-widest text-center text-slate-700 font-bold">
                 {s.code}
               </div>
-              <p className="text-xs text-slate-500 mb-4">Objectif: {s.target_score} points</p>
+              <p className="text-xs text-slate-500 mb-4">
+                Objectif: {s.target_score} points
+                <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">
+                  {s.game_mode === 'qcm' ? <><HelpCircle className="w-3 h-3" />QCM</> : <><Radio className="w-3 h-3" />Buzzer</>}
+                </span>
+              </p>
               <div className="flex gap-2">
                 <button
                   onClick={() => setActiveId(s.id)}

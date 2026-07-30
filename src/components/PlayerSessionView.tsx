@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useSessionRealtime } from '../hooks/useSessionRealtime';
 import Scoreboard from './Scoreboard';
 import WinnerView from './WinnerView';
-import { ArrowLeft, Zap, Lock, Ban, Clock, Trophy } from 'lucide-react';
+import type { QuizQuestion } from '../types';
+import { ArrowLeft, Zap, Lock, Ban, Clock, Trophy, Check, X } from 'lucide-react';
 
 interface Props { sessionId: string; onLeave: () => void; }
 
@@ -16,6 +17,9 @@ export default function PlayerSessionView({ sessionId, onLeave }: Props) {
   const [buzzing, setBuzzing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const lastBuzzRef = useRef<number>(0);
+  const [currentQuestion, setCurrentQuestion] = useState<QuizQuestion | null>(null);
+  const [myAnswer, setMyAnswer] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
@@ -25,6 +29,33 @@ export default function PlayerSessionView({ sessionId, onLeave }: Props) {
     }, 15000);
     return () => clearInterval(t);
   }, [sessionId, profile]);
+
+  useEffect(() => {
+    if (currentRound?.question_id) {
+      supabase
+        .from('quiz_questions')
+        .select('*')
+        .eq('id', currentRound.question_id)
+        .maybeSingle()
+        .then(({ data }) => setCurrentQuestion(data as QuizQuestion | null));
+    } else {
+      setCurrentQuestion(null);
+    }
+    setMyAnswer(null);
+  }, [currentRound?.question_id]);
+
+  useEffect(() => {
+    if (!currentRound || !profile) return;
+    supabase
+      .from('player_answers')
+      .select('answer_index')
+      .eq('round_id', currentRound.id)
+      .eq('player_id', profile.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setMyAnswer(data.answer_index);
+      });
+  }, [currentRound?.id, profile?.id]);
 
   if (!session || !profile) {
     return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-500">Chargement...</div>;
@@ -38,6 +69,9 @@ export default function PlayerSessionView({ sessionId, onLeave }: Props) {
   const iBuzzedFirst = currentRound?.first_buzzer_id === profile.id;
   const roundOpen = currentRound?.status === 'open';
   const winner = session.winner_id ? players.find(p => p.player_id === session.winner_id) : null;
+
+  const isChoiceQuestion = currentQuestion && currentQuestion.question_type !== 'buzzer';
+  const isBuzzerQuestion = !currentQuestion || currentQuestion.question_type === 'buzzer';
 
   const toMsg = (e: unknown): string => {
     if (!e) return 'Erreur inconnue';
@@ -67,6 +101,24 @@ export default function PlayerSessionView({ sessionId, onLeave }: Props) {
     }
   };
 
+  const submitAnswer = async (answerIndex: number) => {
+    if (!currentRound || !roundOpen || submitting || myAnswer !== null) return;
+    setSubmitting(true);
+    setErr(null);
+    try {
+      const { error } = await supabase.rpc('submit_answer', { p_round_id: currentRound.id, p_answer_index: answerIndex });
+      if (error) throw error;
+      setMyAnswer(answerIndex);
+      ping();
+    } catch (e: unknown) {
+      setErr(toMsg(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const roundClosed = currentRound?.status === 'closed';
+
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col">
       {session.status === 'finished' && winner && (
@@ -95,6 +147,7 @@ export default function PlayerSessionView({ sessionId, onLeave }: Props) {
       </header>
 
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-8 max-w-4xl mx-auto w-full">
+        {/* Waiting for round */}
         {!currentRound && (
           <div className="text-center py-12">
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-slate-800 mb-4">
@@ -105,52 +158,122 @@ export default function PlayerSessionView({ sessionId, onLeave }: Props) {
           </div>
         )}
 
-        {currentRound && !roundOpen && iBuzzedFirst && (
-          <div className="text-center py-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-amber-400 mb-4 animate-pulse">
-              <Zap className="w-10 h-10 text-slate-900" />
+        {/* QCM Choice question */}
+        {currentRound && isChoiceQuestion && (
+          <div className="w-full max-w-lg">
+            <p className="text-slate-400 text-sm mb-3 uppercase tracking-wider text-center">
+              Manche #{currentRound.round_number}
+            </p>
+            <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 mb-6">
+              <p className="text-white text-xl font-bold text-center">{currentQuestion!.question_text}</p>
             </div>
-            <p className="text-amber-400 font-bold text-2xl mb-1">Vous avez buzzé !</p>
-            <p className="text-slate-300">Donnez votre réponse à l'oral</p>
-          </div>
-        )}
 
-        {currentRound && !roundOpen && !iBuzzedFirst && firstBuzzer && (
-          <div className="text-center py-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-slate-800 mb-4">
-              <Lock className="w-10 h-10 text-slate-500" />
-            </div>
-            <p className="text-white font-bold text-xl mb-1">Buzzer verrouillé</p>
-            <p className="text-slate-400">{firstBuzzer.profile?.display_name} a buzzé en premier</p>
-          </div>
-        )}
-
-        {currentRound && roundOpen && amBlocked && (
-          <div className="text-center py-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-red-500/20 mb-4">
-              <Ban className="w-10 h-10 text-red-400" />
-            </div>
-            <p className="text-red-400 font-bold text-xl mb-1">Vous êtes bloqué</p>
-            <p className="text-slate-400">Jusqu'à la prochaine manche</p>
-          </div>
-        )}
-
-        {currentRound && roundOpen && !amBlocked && (
-          <div className="w-full flex flex-col items-center">
-            <p className="text-slate-400 text-sm mb-4 uppercase tracking-wider">Manche #{currentRound.round_number}</p>
-            <button
-              onClick={doBuzz}
-              disabled={buzzing}
-              className="group relative w-72 h-72 sm:w-80 sm:h-80 rounded-full bg-gradient-to-br from-red-500 to-red-700 shadow-[0_20px_60px_rgba(239,68,68,0.5)] hover:shadow-[0_25px_70px_rgba(239,68,68,0.7)] active:scale-95 transition-all duration-100 flex items-center justify-center disabled:opacity-70"
-            >
-              <div className="absolute inset-3 rounded-full bg-gradient-to-br from-red-400 to-red-600 flex flex-col items-center justify-center border-4 border-red-800/30">
-                <Zap className="w-20 h-20 text-white mb-2" strokeWidth={2.5} />
-                <span className="text-white font-black text-4xl tracking-wider">BUZZ</span>
+            {roundOpen && myAnswer === null && (
+              <div className={`grid gap-3 ${currentQuestion!.question_type === 'choice_4' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+                {currentQuestion!.options!.map((opt, i) => (
+                  <button
+                    key={i}
+                    onClick={() => submitAnswer(i)}
+                    disabled={submitting}
+                    className="flex items-center gap-3 p-4 bg-slate-800 border-2 border-slate-600 hover:border-amber-400 hover:bg-slate-700 rounded-xl transition text-left disabled:opacity-50 group"
+                  >
+                    <span className="w-10 h-10 rounded-full bg-slate-700 group-hover:bg-amber-400 group-hover:text-slate-900 text-amber-400 font-bold text-lg flex items-center justify-center flex-shrink-0 transition">
+                      {String.fromCharCode(65 + i)}
+                    </span>
+                    <span className="text-white font-medium text-lg">{opt}</span>
+                  </button>
+                ))}
               </div>
-              <div className="absolute inset-0 rounded-full bg-red-500 opacity-0 group-active:opacity-30 transition" />
-            </button>
-            <p className="text-slate-400 text-xs mt-6">Appuyez dès que vous connaissez la réponse</p>
+            )}
+
+            {roundOpen && myAnswer !== null && (
+              <div className="text-center py-8">
+                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-500/20 mb-4">
+                  <Check className="w-8 h-8 text-green-400" />
+                </div>
+                <p className="text-green-400 font-bold text-xl mb-1">Reponse envoyee !</p>
+                <p className="text-slate-400 text-sm">
+                  Vous avez choisi : <span className="text-white font-medium">{String.fromCharCode(65 + myAnswer)}. {currentQuestion!.options![myAnswer]}</span>
+                </p>
+                <p className="text-slate-500 text-xs mt-2">En attente des resultats...</p>
+              </div>
+            )}
+
+            {roundClosed && (
+              <div className="text-center py-6">
+                <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${myAnswer === currentQuestion!.correct_index ? 'bg-green-500/20' : 'bg-red-500/20'}`}>
+                  {myAnswer === currentQuestion!.correct_index ? <Check className="w-8 h-8 text-green-400" /> : <X className="w-8 h-8 text-red-400" />}
+                </div>
+                <p className={`font-bold text-xl mb-1 ${myAnswer === currentQuestion!.correct_index ? 'text-green-400' : 'text-red-400'}`}>
+                  {myAnswer === currentQuestion!.correct_index ? 'Bonne reponse !' : 'Mauvaise reponse'}
+                </p>
+                {currentQuestion!.correct_index !== null && (
+                  <p className="text-slate-400 text-sm mt-1">
+                    La bonne reponse etait : <span className="text-green-400 font-medium">{String.fromCharCode(65 + currentQuestion!.correct_index)}. {currentQuestion!.options![currentQuestion!.correct_index]}</span>
+                  </p>
+                )}
+              </div>
+            )}
           </div>
+        )}
+
+        {/* Buzzer mode (classic or buzzer-type question in QCM) */}
+        {currentRound && isBuzzerQuestion && (
+          <>
+            {currentQuestion && (
+              <div className="w-full max-w-lg mb-6 bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+                <p className="text-white text-xl font-bold">{currentQuestion.question_text}</p>
+              </div>
+            )}
+
+            {currentRound.status === 'buzzed' && iBuzzedFirst && (
+              <div className="text-center py-8">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-amber-400 mb-4 animate-pulse">
+                  <Zap className="w-10 h-10 text-slate-900" />
+                </div>
+                <p className="text-amber-400 font-bold text-2xl mb-1">Vous avez buzze !</p>
+                <p className="text-slate-300">Donnez votre reponse a l'oral</p>
+              </div>
+            )}
+
+            {currentRound.status === 'buzzed' && !iBuzzedFirst && firstBuzzer && (
+              <div className="text-center py-8">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-slate-800 mb-4">
+                  <Lock className="w-10 h-10 text-slate-500" />
+                </div>
+                <p className="text-white font-bold text-xl mb-1">Buzzer verrouille</p>
+                <p className="text-slate-400">{firstBuzzer.profile?.display_name} a buzze en premier</p>
+              </div>
+            )}
+
+            {roundOpen && amBlocked && (
+              <div className="text-center py-8">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-red-500/20 mb-4">
+                  <Ban className="w-10 h-10 text-red-400" />
+                </div>
+                <p className="text-red-400 font-bold text-xl mb-1">Vous etes bloque</p>
+                <p className="text-slate-400">Jusqu'a la prochaine manche</p>
+              </div>
+            )}
+
+            {roundOpen && !amBlocked && (
+              <div className="w-full flex flex-col items-center">
+                <p className="text-slate-400 text-sm mb-4 uppercase tracking-wider">Manche #{currentRound.round_number}</p>
+                <button
+                  onClick={doBuzz}
+                  disabled={buzzing}
+                  className="group relative w-72 h-72 sm:w-80 sm:h-80 rounded-full bg-gradient-to-br from-red-500 to-red-700 shadow-[0_20px_60px_rgba(239,68,68,0.5)] hover:shadow-[0_25px_70px_rgba(239,68,68,0.7)] active:scale-95 transition-all duration-100 flex items-center justify-center disabled:opacity-70"
+                >
+                  <div className="absolute inset-3 rounded-full bg-gradient-to-br from-red-400 to-red-600 flex flex-col items-center justify-center border-4 border-red-800/30">
+                    <Zap className="w-20 h-20 text-white mb-2" strokeWidth={2.5} />
+                    <span className="text-white font-black text-4xl tracking-wider">BUZZ</span>
+                  </div>
+                  <div className="absolute inset-0 rounded-full bg-red-500 opacity-0 group-active:opacity-30 transition" />
+                </button>
+                <p className="text-slate-400 text-xs mt-6">Appuyez des que vous connaissez la reponse</p>
+              </div>
+            )}
+          </>
         )}
 
         {err && <div className="mt-4 px-4 py-2 bg-red-500/20 text-red-300 text-sm rounded-lg">{err}</div>}

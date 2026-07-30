@@ -1,4 +1,6 @@
 export type Role = 'admin' | 'player';
+export type GameMode = 'buzzer' | 'qcm';
+export type QuestionType = 'choice_2' | 'choice_4' | 'buzzer';
 
 export interface Profile {
   id: string;
@@ -16,6 +18,7 @@ export interface QuizSession {
   status: 'waiting' | 'playing' | 'finished';
   winner_id: string | null;
   current_round_id: string | null;
+  game_mode: GameMode;
   created_at: string;
 }
 
@@ -37,8 +40,28 @@ export interface Round {
   first_buzzer_id: string | null;
   first_buzz_at: string | null;
   outcome: 'correct' | 'wrong' | null;
+  question_id: string | null;
   created_at: string;
   resolved_at: string | null;
+}
+
+export interface QuizQuestion {
+  id: string;
+  session_id: string;
+  question_text: string;
+  question_type: QuestionType;
+  options: string[] | null;
+  correct_index: number | null;
+  position: number;
+  created_at: string;
+}
+
+export interface PlayerAnswer {
+  id: string;
+  round_id: string;
+  player_id: string;
+  answer_index: number;
+  answered_at: string;
 }
 
 export interface GameEvent {

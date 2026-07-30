@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useSessionRealtime } from '../hooks/useSessionRealtime';
 import Scoreboard from './Scoreboard';
 import WinnerView from './WinnerView';
-import { ArrowLeft, Play, Check, X, RotateCcw, RefreshCw, Users, Copy } from 'lucide-react';
+import QuizEditor from './QuizEditor';
+import type { QuizQuestion } from '../types';
+import { ArrowLeft, Play, Check, X, RotateCcw, RefreshCw, Users, Copy, ListChecks, ChevronRight } from 'lucide-react';
 
 interface Props { sessionId: string; onBack: () => void; }
 
@@ -12,6 +14,42 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [tab, setTab] = useState<'game' | 'questions'>('game');
+  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
+  const [answers, setAnswers] = useState<{ player_id: string; answer_index: number }[]>([]);
+
+  const isQcm = session?.game_mode === 'qcm';
+
+  const fetchQuestions = async () => {
+    const { data } = await supabase
+      .from('quiz_questions')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('position', { ascending: true });
+    setQuestions((data ?? []) as QuizQuestion[]);
+  };
+
+  const fetchAnswers = async (roundId: string) => {
+    const { data } = await supabase
+      .from('player_answers')
+      .select('player_id, answer_index')
+      .eq('round_id', roundId);
+    setAnswers((data ?? []) as { player_id: string; answer_index: number }[]);
+  };
+
+  useEffect(() => {
+    if (isQcm) fetchQuestions();
+  }, [sessionId, isQcm]);
+
+  useEffect(() => {
+    if (currentRound && isQcm && currentRound.question_id) {
+      fetchAnswers(currentRound.id);
+      const interval = setInterval(() => fetchAnswers(currentRound.id), 2000);
+      return () => clearInterval(interval);
+    } else {
+      setAnswers([]);
+    }
+  }, [currentRound?.id, isQcm]);
 
   const toMsg = (e: unknown): string => {
     if (!e) return 'Erreur inconnue';
@@ -33,9 +71,20 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
     if (error) throw error;
   });
 
+  const startQcmRound = (questionId: string) => run(async () => {
+    const { error } = await supabase.rpc('start_qcm_round', { p_session_id: sessionId, p_question_id: questionId });
+    if (error) throw error;
+  });
+
   const resolve = (correct: boolean) => run(async () => {
     if (!currentRound) return;
     const { error } = await supabase.rpc('resolve_round', { p_round_id: currentRound.id, p_correct: correct });
+    if (error) throw error;
+  });
+
+  const resolveQcm = () => run(async () => {
+    if (!currentRound) return;
+    const { error } = await supabase.rpc('resolve_qcm_round', { p_round_id: currentRound.id });
     if (error) throw error;
   });
 
@@ -45,7 +94,7 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
   });
 
   const resetGame = () => run(async () => {
-    if (!confirm('Réinitialiser la partie et les scores ?')) return;
+    if (!confirm('Reinitialiser la partie et les scores ?')) return;
     const { error } = await supabase.rpc('reset_game', { p_session_id: sessionId });
     if (error) throw error;
   });
@@ -67,6 +116,14 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
 
   const winner = session.winner_id ? players.find(p => p.player_id === session.winner_id) : null;
 
+  const currentQuestion = currentRound?.question_id
+    ? questions.find(q => q.id === currentRound.question_id)
+    : null;
+
+  const playedQuestionIds = new Set<string>();
+  // We track which questions have been used (simplified: current round question)
+  if (currentRound?.question_id) playedQuestionIds.add(currentRound.question_id);
+
   return (
     <div className="min-h-screen bg-slate-50">
       {session.status === 'finished' && winner && (
@@ -86,7 +143,7 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
             </button>
             <div className="min-w-0">
               <h1 className="font-bold text-slate-900 truncate">{session.name}</h1>
-              <p className="text-xs text-slate-500">{players.length} joueur{players.length > 1 ? 's' : ''} connecté{players.length > 1 ? 's' : ''}</p>
+              <p className="text-xs text-slate-500">{players.length} joueur{players.length > 1 ? 's' : ''} connecte{players.length > 1 ? 's' : ''}</p>
             </div>
           </div>
           <button
@@ -98,115 +155,240 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
             <Copy className="w-4 h-4" />
           </button>
         </div>
-        {copied && <div className="bg-green-50 text-green-700 text-center text-sm py-2">Code copié</div>}
+        {copied && <div className="bg-green-50 text-green-700 text-center text-sm py-2">Code copie</div>}
+
+        {isQcm && (
+          <div className="max-w-6xl mx-auto px-4 sm:px-6">
+            <div className="flex gap-1 -mb-px">
+              <button
+                onClick={() => setTab('game')}
+                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${tab === 'game' ? 'border-amber-400 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                <Play className="w-4 h-4 inline mr-1.5" />Partie
+              </button>
+              <button
+                onClick={() => { setTab('questions'); fetchQuestions(); }}
+                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${tab === 'questions' ? 'border-amber-400 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                <ListChecks className="w-4 h-4 inline mr-1.5" />Questions ({questions.length})
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white rounded-xl border border-slate-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-slate-900">Contrôle de la manche</h2>
-              {currentRound && (
-                <span className="text-xs text-slate-500">Manche #{currentRound.round_number}</span>
-              )}
-            </div>
-
-            {!currentRound && (
-              <div className="text-center py-8">
-                <p className="text-slate-500 mb-4">Aucune manche en cours</p>
-                <button
-                  onClick={startRound}
-                  disabled={loading}
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-amber-400 text-slate-900 font-bold rounded-lg hover:bg-amber-300 disabled:opacity-50 transition"
-                >
-                  <Play className="w-5 h-5" /> Démarrer la manche
-                </button>
-                {players.length === 0 && <p className="mt-3 text-xs text-slate-400">Astuce: les joueurs peuvent rejoindre même après le démarrage</p>}
-              </div>
-            )}
-
-            {currentRound && currentRound.status === 'open' && (
-              <div className="text-center py-8 border-2 border-dashed border-amber-300 bg-amber-50 rounded-lg">
-                <div className="inline-flex w-3 h-3 bg-green-500 rounded-full animate-pulse mb-2"></div>
-                <p className="text-amber-900 font-semibold">Manche ouverte - en attente du premier buzz</p>
-                <p className="text-xs text-amber-700 mt-1">{blockedIds.length} joueur(s) bloqué(s)</p>
-              </div>
-            )}
-
-            {currentRound && currentRound.status === 'buzzed' && firstBuzzer && (
-              <div className="space-y-4">
-                <div className="bg-gradient-to-br from-amber-100 to-orange-100 border-2 border-amber-400 rounded-xl p-6 text-center">
-                  <p className="text-xs uppercase tracking-wider text-amber-800 font-semibold mb-1">Premier buzzer</p>
-                  <p className="text-4xl font-bold text-slate-900">{firstBuzzer.profile?.display_name}</p>
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+        {isQcm && tab === 'questions' ? (
+          <QuizEditor sessionId={sessionId} />
+        ) : (
+          <div className="grid lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-white rounded-xl border border-slate-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-semibold text-slate-900">Controle de la manche</h2>
+                  {currentRound && (
+                    <span className="text-xs text-slate-500">Manche #{currentRound.round_number}</span>
+                  )}
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => resolve(true)}
-                    disabled={loading}
-                    className="flex items-center justify-center gap-2 px-4 py-4 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 disabled:opacity-50 transition"
-                  >
-                    <Check className="w-5 h-5" /> Bonne réponse
-                  </button>
-                  <button
-                    onClick={() => resolve(false)}
-                    disabled={loading}
-                    className="flex items-center justify-center gap-2 px-4 py-4 bg-red-500 text-white font-bold rounded-lg hover:bg-red-600 disabled:opacity-50 transition"
-                  >
-                    <X className="w-5 h-5" /> Mauvaise réponse
-                  </button>
-                </div>
-              </div>
-            )}
 
-            {currentRound && (
-              <div className="flex gap-2 mt-4 pt-4 border-t border-slate-200">
-                <button
-                  onClick={resetRound}
-                  disabled={loading}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
-                >
-                  <RotateCcw className="w-4 h-4" /> Réinitialiser la manche
-                </button>
-                <button
-                  onClick={resetGame}
-                  disabled={loading}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg ml-auto"
-                >
-                  <RefreshCw className="w-4 h-4" /> Réinitialiser la partie
-                </button>
-              </div>
-            )}
-
-            {err && <div className="mt-3 p-3 bg-red-50 text-red-700 text-sm rounded-lg">{err}</div>}
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 p-6">
-            <h2 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
-              <Users className="w-5 h-5 text-slate-500" /> Joueurs connectés
-            </h2>
-            <div className="grid sm:grid-cols-2 gap-2">
-              {players.length === 0 && <p className="text-sm text-slate-400">En attente de joueurs...</p>}
-              {players.map(p => {
-                const blocked = blockedIds.includes(p.player_id);
-                return (
-                  <div key={p.id} className={`flex items-center gap-3 p-3 rounded-lg border ${blocked ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'}`}>
-                    <div className={`w-2 h-2 rounded-full ${blocked ? 'bg-red-400' : 'bg-green-400'}`}></div>
-                    <span className="font-medium text-slate-900 flex-1 truncate">{p.profile?.display_name}</span>
-                    <span className="text-sm font-bold text-slate-700">{p.score} pts</span>
+                {/* No current round - Buzzer mode */}
+                {!currentRound && !isQcm && (
+                  <div className="text-center py-8">
+                    <p className="text-slate-500 mb-4">Aucune manche en cours</p>
+                    <button
+                      onClick={startRound}
+                      disabled={loading}
+                      className="inline-flex items-center gap-2 px-6 py-3 bg-amber-400 text-slate-900 font-bold rounded-lg hover:bg-amber-300 disabled:opacity-50 transition"
+                    >
+                      <Play className="w-5 h-5" /> Demarrer la manche
+                    </button>
                   </div>
-                );
-              })}
+                )}
+
+                {/* No current round - QCM mode: pick a question */}
+                {!currentRound && isQcm && (
+                  <div className="space-y-3">
+                    <p className="text-slate-500 text-sm mb-3">Choisissez une question a lancer :</p>
+                    {questions.length === 0 && (
+                      <div className="text-center py-6">
+                        <p className="text-slate-400 text-sm">Aucune question. Allez dans l'onglet Questions pour en ajouter.</p>
+                      </div>
+                    )}
+                    {questions.map((q, idx) => (
+                      <button
+                        key={q.id}
+                        onClick={() => startQcmRound(q.id)}
+                        disabled={loading}
+                        className="w-full flex items-center gap-3 p-4 bg-slate-50 hover:bg-amber-50 border border-slate-200 hover:border-amber-300 rounded-lg transition text-left disabled:opacity-50 group"
+                      >
+                        <span className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 font-bold text-sm flex items-center justify-center flex-shrink-0">
+                          {idx + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-900 truncate">
+                            {q.question_text || 'Question sans titre'}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {q.question_type === 'buzzer' ? 'Buzzer' : q.question_type === 'choice_2' ? '2 choix' : '4 choix'}
+                          </p>
+                        </div>
+                        <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-amber-500 transition" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Current round - QCM with choices */}
+                {currentRound && isQcm && currentQuestion && currentQuestion.question_type !== 'buzzer' && (
+                  <div className="space-y-4">
+                    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5">
+                      <p className="text-xs uppercase tracking-wider text-blue-600 font-semibold mb-2">Question en cours</p>
+                      <p className="text-lg font-bold text-slate-900">{currentQuestion.question_text}</p>
+                      {currentQuestion.options && (
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          {currentQuestion.options.map((opt, i) => (
+                            <div
+                              key={i}
+                              className={`px-3 py-2 rounded-lg text-sm font-medium border ${currentQuestion.correct_index === i ? 'bg-green-100 border-green-300 text-green-800' : 'bg-white border-slate-200 text-slate-700'}`}
+                            >
+                              <span className="font-bold mr-2">{String.fromCharCode(65 + i)}.</span>
+                              {opt}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-slate-50 rounded-lg p-4">
+                      <p className="text-xs font-semibold text-slate-500 uppercase mb-2">
+                        Reponses ({answers.length}/{players.length})
+                      </p>
+                      <div className="grid gap-1.5">
+                        {players.map(p => {
+                          const ans = answers.find(a => a.player_id === p.player_id);
+                          return (
+                            <div key={p.id} className="flex items-center gap-2 text-sm">
+                              <div className={`w-2 h-2 rounded-full ${ans ? 'bg-green-400' : 'bg-slate-300'}`} />
+                              <span className="text-slate-700 flex-1">{p.profile?.display_name}</span>
+                              {ans && currentQuestion.options && (
+                                <span className={`text-xs px-2 py-0.5 rounded ${ans.answer_index === currentQuestion.correct_index ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                  {String.fromCharCode(65 + ans.answer_index)}. {currentQuestion.options[ans.answer_index]}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {currentRound.status === 'open' && (
+                      <button
+                        onClick={resolveQcm}
+                        disabled={loading}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 disabled:opacity-50 transition"
+                      >
+                        <Check className="w-5 h-5" /> Terminer et attribuer les points
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Current round - buzzer mode (same as before + QCM buzzer-type questions) */}
+                {currentRound && (!isQcm || (currentQuestion && currentQuestion.question_type === 'buzzer')) && (
+                  <>
+                    {currentQuestion && (
+                      <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-5 mb-4">
+                        <p className="text-xs uppercase tracking-wider text-amber-600 font-semibold mb-1">Question</p>
+                        <p className="text-lg font-bold text-slate-900">{currentQuestion.question_text}</p>
+                      </div>
+                    )}
+
+                    {currentRound.status === 'open' && (
+                      <div className="text-center py-8 border-2 border-dashed border-amber-300 bg-amber-50 rounded-lg">
+                        <div className="inline-flex w-3 h-3 bg-green-500 rounded-full animate-pulse mb-2"></div>
+                        <p className="text-amber-900 font-semibold">Manche ouverte - en attente du premier buzz</p>
+                        <p className="text-xs text-amber-700 mt-1">{blockedIds.length} joueur(s) bloque(s)</p>
+                      </div>
+                    )}
+
+                    {currentRound.status === 'buzzed' && firstBuzzer && (
+                      <div className="space-y-4">
+                        <div className="bg-gradient-to-br from-amber-100 to-orange-100 border-2 border-amber-400 rounded-xl p-6 text-center">
+                          <p className="text-xs uppercase tracking-wider text-amber-800 font-semibold mb-1">Premier buzzer</p>
+                          <p className="text-4xl font-bold text-slate-900">{firstBuzzer.profile?.display_name}</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            onClick={() => resolve(true)}
+                            disabled={loading}
+                            className="flex items-center justify-center gap-2 px-4 py-4 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 disabled:opacity-50 transition"
+                          >
+                            <Check className="w-5 h-5" /> Bonne reponse
+                          </button>
+                          <button
+                            onClick={() => resolve(false)}
+                            disabled={loading}
+                            className="flex items-center justify-center gap-2 px-4 py-4 bg-red-500 text-white font-bold rounded-lg hover:bg-red-600 disabled:opacity-50 transition"
+                          >
+                            <X className="w-5 h-5" /> Mauvaise reponse
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {currentRound && (
+                  <div className="flex gap-2 mt-4 pt-4 border-t border-slate-200">
+                    <button
+                      onClick={resetRound}
+                      disabled={loading}
+                      className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
+                    >
+                      <RotateCcw className="w-4 h-4" /> Reinitialiser la manche
+                    </button>
+                    <button
+                      onClick={resetGame}
+                      disabled={loading}
+                      className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg ml-auto"
+                    >
+                      <RefreshCw className="w-4 h-4" /> Reinitialiser la partie
+                    </button>
+                  </div>
+                )}
+
+                {err && <div className="mt-3 p-3 bg-red-50 text-red-700 text-sm rounded-lg">{err}</div>}
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 p-6">
+                <h2 className="font-semibold text-slate-900 flex items-center gap-2 mb-4">
+                  <Users className="w-5 h-5 text-slate-500" /> Joueurs connectes
+                </h2>
+                <div className="grid sm:grid-cols-2 gap-2">
+                  {players.length === 0 && <p className="text-sm text-slate-400">En attente de joueurs...</p>}
+                  {players.map(p => {
+                    const blocked = blockedIds.includes(p.player_id);
+                    return (
+                      <div key={p.id} className={`flex items-center gap-3 p-3 rounded-lg border ${blocked ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'}`}>
+                        <div className={`w-2 h-2 rounded-full ${blocked ? 'bg-red-400' : 'bg-green-400'}`}></div>
+                        <span className="font-medium text-slate-900 flex-1 truncate">{p.profile?.display_name}</span>
+                        <span className="text-sm font-bold text-slate-700">{p.score} pts</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Scoreboard
+                players={players}
+                target={session.target_score}
+                highlightId={currentRound?.first_buzzer_id}
+              />
             </div>
           </div>
-        </div>
-
-        <div>
-          <Scoreboard
-            players={players}
-            target={session.target_score}
-            highlightId={currentRound?.first_buzzer_id}
-          />
-        </div>
+        )}
       </main>
     </div>
   );
