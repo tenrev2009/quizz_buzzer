@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+// Nom sous lequel ce navigateur apparait dans la liste des appareils Spotify.
+// Sert aussi a le retrouver par l'API quand l'evenement 'ready' est manque.
+const PLAYER_NAME = 'QuizBuzz Music';
+
 interface PlayerState {
   isPlaying: boolean;
   trackName: string | null;
@@ -61,7 +65,7 @@ export function useSpotifyPlayer(
 
     (window as any).onSpotifyWebPlaybackSDKReady = () => {
       const player = new (window as any).Spotify.Player({
-        name: 'QuizBuzz Music',
+        name: PLAYER_NAME,
         getOAuthToken: (cb: (t: string) => void) => cb(accessToken),
         volume: 0.8,
       });
@@ -140,22 +144,49 @@ export function useSpotifyPlayer(
     }
   }, []);
 
+  // Liste des peripheriques tels que Spotify les voit reellement. C'est la
+  // seule source fiable : l'evenement 'ready' peut avoir ete manque, et le
+  // peripherique peut avoir disparu sans que 'not_ready' soit parvenu.
+  const listDevices = useCallback(async (): Promise<{ id: string; name: string }[]> => {
+    if (!accessToken) return [];
+    try {
+      const r = await fetch('https://api.spotify.com/v1/me/player/devices', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!r.ok) return [];
+      const d: { devices?: { id: string; name: string }[] } = await r.json();
+      return (d.devices ?? []).map(x => ({ id: x.id, name: x.name }));
+    } catch {
+      return [];
+    }
+  }, [accessToken]);
+
   // Reconnecte le lecteur si besoin et attend qu'un peripherique soit annonce.
   const ensureDevice = useCallback(async (): Promise<string | null> => {
     if (deviceIdRef.current) return deviceIdRef.current;
-    if (!playerRef.current) return null;
-    try {
-      await playerRef.current.connect();
-    } catch {
-      return null;
+
+    if (playerRef.current) {
+      try {
+        await playerRef.current.connect();
+      } catch {
+        // On tentera quand meme la voie API ci-dessous.
+      }
+      const deadline = Date.now() + 8000;
+      while (Date.now() < deadline) {
+        if (deviceIdRef.current) return deviceIdRef.current;
+        await new Promise(r => setTimeout(r, 200));
+      }
     }
-    const deadline = Date.now() + 8000;
-    while (Date.now() < deadline) {
-      if (deviceIdRef.current) return deviceIdRef.current;
-      await new Promise(r => setTimeout(r, 200));
+
+    // 'ready' n'est pas arrive : Spotify connait peut-etre malgre tout notre
+    // peripherique. On le retrouve par son nom.
+    const fromApi = (await listDevices()).find(d => d.name === PLAYER_NAME);
+    if (fromApi) {
+      deviceIdRef.current = fromApi.id;
+      return fromApi.id;
     }
     return null;
-  }, []);
+  }, [listDevices]);
 
   const play = useCallback(async (uriOrPreviewUrl: string) => {
     if (mode === 'preview') {
@@ -212,9 +243,20 @@ export function useSpotifyPlayer(
           body: JSON.stringify({ uris: [uriOrPreviewUrl] }),
         });
 
+      // Message d'echec cite les peripheriques que Spotify voit : sans cela,
+      // impossible de distinguer un SDK qui ne s'enregistre pas d'un
+      // peripherique perdu entre-temps.
+      const registrationFailure = async () => {
+        const noms = (await listDevices()).map(d => d.name);
+        return noms.length
+          ? `Le lecteur « ${PLAYER_NAME} » ne s'est pas enregistre aupres de Spotify. Appareils vus par Spotify : ${noms.join(', ')}.`
+          : `Le lecteur « ${PLAYER_NAME} » ne s'est pas enregistre et Spotify ne voit aucun appareil. Verifiez que l'onglet est au premier plan.`;
+      };
+
       let device = await ensureDevice();
       if (!device) {
-        setState(s => ({ ...s, error: "Le lecteur Spotify n'a pas pu s'enregistrer. Verifiez que l'onglet est au premier plan, puis reessayez." }));
+        const message = await registrationFailure();
+        setState(s => ({ ...s, error: message }));
         return;
       }
 
@@ -236,7 +278,14 @@ export function useSpotifyPlayer(
       if (res.status === 404) {
         deviceIdRef.current = null;
         device = await ensureDevice();
-        if (device) res = await sendPlay(device);
+        if (!device) {
+          // Sans peripherique de rechange, rapporter le 404 initial induirait
+          // en erreur : le probleme est l'enregistrement, pas la lecture.
+          const message = await registrationFailure();
+          setState(s => ({ ...s, isPlaying: false, error: message }));
+          return;
+        }
+        res = await sendPlay(device);
       }
 
       if (!res.ok) {
@@ -260,7 +309,7 @@ export function useSpotifyPlayer(
         }
       }, 2500);
     }
-  }, [mode, accessToken, ensureDevice]);
+  }, [mode, accessToken, ensureDevice, listDevices]);
 
   // Le SDK repond « no list was loaded » si on le pilote avant qu'une piste
   // n'ait ete chargee. getCurrentState() vaut null dans ce cas.
