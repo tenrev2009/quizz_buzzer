@@ -70,9 +70,18 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
   };
 
   const onMusicTrackStarted = () => {
+    // La lecture ouvre la manche aux buzzers, mais seulement s'il n'y en a pas
+    // deja une : relancer un morceau en cours de manche ne doit pas en creer.
+    if (currentRound) {
+      fetchMusicConfig();
+      refresh();
+      ping();
+      return;
+    }
     run(async () => {
       const { error } = await supabase.rpc('start_round', { p_session_id: sessionId });
       if (error) throw error;
+      fetchMusicConfig();
     });
   };
 
@@ -340,10 +349,19 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                   </div>
                 )}
 
-                {/* No current round - Music mode */}
-                {!currentRound && isMusic && (
-                  <div className="space-y-5">
-                    {!spotify.connected && (
+                {/* Music mode. Un seul MusicPlayer, monte avec ou sans manche
+                    en cours : le dedoubler faisait remonter le composant au
+                    demarrage de la manche, ce qui deconnectait le SDK et
+                    interrompait la lecture a peine lancee. */}
+                {isMusic && (
+                  <div className="space-y-4">
+                    {spotify.loading && (
+                      <div className="flex items-center gap-3 py-6 justify-center">
+                        <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
+                        <span className="text-sm text-slate-500">Connexion Spotify...</span>
+                      </div>
+                    )}
+                    {!spotify.loading && !spotify.connected && (
                       <SpotifyConnect />
                     )}
                     {spotify.connected && spotify.accessToken && (!musicConfig || changingPlaylist) && (
@@ -364,51 +382,6 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                       </div>
                     )}
                     {spotify.connected && musicConfig && !changingPlaylist && spotify.accessToken && (
-                      <div className="space-y-4">
-                        {playlistHeader}
-                        <MusicPlayer
-                          sessionId={sessionId}
-                          accessToken={spotify.accessToken}
-                          playbackMode={musicConfig.playback_mode}
-                          config={musicConfig}
-                          onTrackSelected={fetchMusicConfig}
-                          onTrackStarted={onMusicTrackStarted}
-                          roundStatus={null}
-                        />
-                        <p className="text-center text-sm text-slate-500">Choisissez un morceau avec Suivant, puis lancez-le avec Play pour demarrer la manche</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Current round - Music mode */}
-                {currentRound && isMusic && (
-                  <div className="space-y-4">
-                    {spotify.loading && (
-                      <div className="flex items-center gap-3 py-6 justify-center">
-                        <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
-                        <span className="text-sm text-slate-500">Connexion Spotify...</span>
-                      </div>
-                    )}
-                    {!spotify.loading && !spotify.connected && (
-                      <SpotifyConnect />
-                    )}
-                    {spotify.connected && musicConfig && changingPlaylist && spotify.accessToken && (
-                      <div>
-                        <div className="flex items-center justify-between mb-3">
-                          <p className="text-slate-700 font-medium">Choisissez une playlist :</p>
-                          <button onClick={() => setChangingPlaylist(false)} className="text-xs text-slate-500 hover:text-slate-800 transition">
-                            Annuler
-                          </button>
-                        </div>
-                        <SpotifyPlaylistPicker
-                          accessToken={spotify.accessToken}
-                          onSelect={selectPlaylist}
-                          selectedId={musicConfig.spotify_playlist_id}
-                        />
-                      </div>
-                    )}
-                    {spotify.connected && musicConfig && !changingPlaylist && spotify.accessToken && (
                       <>
                         {playlistHeader}
                         <MusicPlayer
@@ -417,17 +390,20 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                           playbackMode={musicConfig.playback_mode}
                           config={musicConfig}
                           onTrackSelected={fetchMusicConfig}
-                          onTrackStarted={() => {
-                            fetchMusicConfig();
-                            refresh();
-                            ping();
-                          }}
-                          roundStatus={currentRound.status}
+                          onTrackStarted={onMusicTrackStarted}
+                          roundStatus={currentRound?.status ?? null}
                         />
+                        {!currentRound && (
+                          <p className="text-center text-sm text-slate-500">Choisissez un morceau avec Suivant, puis lancez-le avec Play pour demarrer la manche</p>
+                        )}
+                        <button
+                          onClick={finishGame}
+                          disabled={loading}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 disabled:opacity-50 transition"
+                        >
+                          <Check className="w-5 h-5" /> Terminer le quiz et afficher les resultats
+                        </button>
                       </>
-                    )}
-                    {spotify.connected && !musicConfig && (
-                      <div className="text-center py-4 text-slate-500 text-sm">Configuration musicale manquante. Veuillez reinitialiser la manche.</div>
                     )}
                   </div>
                 )}
