@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { QuestionType } from '../types';
+import { describeWriteError } from '../lib/supabaseErrors';
 import { Sparkles, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -85,7 +86,7 @@ export default function QuizGenerator({ sessionId, startPosition, onGenerated }:
       }));
 
       const { error: insertError } = await supabase.from('quiz_questions').insert(rows);
-      if (insertError) throw new Error(`Enregistrement impossible : ${insertError.message}`);
+      if (insertError) throw new Error(describeWriteError(insertError.message));
 
       if (generated.length < total) {
         setNotice(

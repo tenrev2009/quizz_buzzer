@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { parseQuiz, CSV_TEMPLATE, EXTERNAL_AI_PROMPT } from '../lib/quizImport';
+import { describeWriteError } from '../lib/supabaseErrors';
 import {
   Upload, Loader2, ChevronDown, ChevronUp, FileText, Copy, Check, AlertTriangle,
 } from 'lucide-react';
@@ -52,7 +53,7 @@ export default function QuizImport({ sessionId, startPosition, onImported }: Pro
       }));
 
       const { error: insertError } = await supabase.from('quiz_questions').insert(rows);
-      if (insertError) throw new Error(insertError.message);
+      if (insertError) throw new Error(describeWriteError(insertError.message));
 
       setNotice(`${rows.length} question(s) importee(s).`);
       setText('');
@@ -194,7 +195,9 @@ export default function QuizImport({ sessionId, startPosition, onImported }: Pro
           )}
 
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">{error}</div>
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 whitespace-pre-wrap break-words">
+              {error}
+            </div>
           )}
           {notice && !error && (
             <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-sm text-green-700">{notice}</div>
