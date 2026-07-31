@@ -10,9 +10,13 @@ export function describeWriteError(message: string): string {
   if (missingColumn) {
     const column = missingColumn[1];
     return (
-      `La colonne « ${column} » n'existe pas encore dans votre base. ` +
-      `Appliquez la migration correspondante dans le SQL Editor de Supabase, ` +
-      `puis reessayez :\n\nALTER TABLE quiz_questions ADD COLUMN IF NOT EXISTS ${column} text;`
+      `La colonne « ${column} » n'est pas visible par l'API de votre base.\n\n` +
+      `1. Dans le SQL Editor de Supabase, executez :\n` +
+      `   ALTER TABLE quiz_questions ADD COLUMN IF NOT EXISTS ${column} text;\n\n` +
+      `2. Si vous l'avez deja fait, l'API garde un cache du schema. ` +
+      `Forcez son rafraichissement, toujours dans le SQL Editor :\n` +
+      `   NOTIFY pgrst, 'reload schema';\n\n` +
+      `Rechargez ensuite la page (Ctrl+Shift+R) et reessayez.`
     );
   }
 
