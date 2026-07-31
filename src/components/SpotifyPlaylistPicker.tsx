@@ -5,7 +5,14 @@ interface Playlist {
   id: string;
   name: string | null;
   images: { url: string }[] | null;
+  // L'API renvoie desormais le decompte sous `items`; `tracks` est conserve
+  // en repli pour les reponses issues de l'ancienne forme.
+  items: { total: number } | null;
   tracks: { total: number } | null;
+}
+
+function trackCount(p: Playlist): number {
+  return p.items?.total ?? p.tracks?.total ?? 0;
 }
 
 interface Props {
@@ -104,7 +111,7 @@ export default function SpotifyPlaylistPicker({ accessToken, onSelect, selectedI
             )}
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-slate-900 truncate">{p.name ?? 'Playlist sans nom'}</p>
-              <p className="text-xs text-slate-500">{p.tracks?.total ?? 0} titres</p>
+              <p className="text-xs text-slate-500">{trackCount(p)} titres</p>
             </div>
             {selectedId === p.id && <Check className="w-5 h-5 text-amber-500 flex-shrink-0" />}
           </button>

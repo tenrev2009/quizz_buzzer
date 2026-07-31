@@ -8,7 +8,15 @@ interface SpotifyTrack {
   uri: string;
   name: string;
   artists: { name: string }[];
-  preview_url: string | null;
+  // Spotify ne renvoie plus preview_url : absent sur les reponses actuelles.
+  preview_url?: string | null;
+}
+
+// Une entree de playlist expose la piste sous `item`; `track` est l'ancienne
+// forme, conservee en repli.
+interface PlaylistEntry {
+  item?: SpotifyTrack | null;
+  track?: SpotifyTrack | null;
 }
 
 interface Props {
@@ -24,6 +32,7 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
   const player = useSpotifyPlayer(playbackMode, accessToken);
   const [tracks, setTracks] = useState<SpotifyTrack[]>([]);
   const [loadingTracks, setLoadingTracks] = useState(false);
+  const [tracksError, setTracksError] = useState<string | null>(null);
   const [volume, setVolume] = useState(0.8);
   const [muted, setMuted] = useState(false);
   const [trackLoading, setTrackLoading] = useState(false);
@@ -43,19 +52,24 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
   const fetchPlaylistTracks = useCallback(async () => {
     if (!config?.spotify_playlist_id || !accessToken) return;
     setLoadingTracks(true);
+    setTracksError(null);
     try {
       const allTracks: SpotifyTrack[] = [];
-      let url: string | null = `https://api.spotify.com/v1/playlists/${config.spotify_playlist_id}/tracks?limit=100&fields=items(track(uri,name,artists,preview_url)),next`;
+      let url: string | null = `https://api.spotify.com/v1/playlists/${config.spotify_playlist_id}/items?limit=100&fields=items(item(uri,name,artists)),next`;
 
       while (url) {
         const res: Response = await fetch(url, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
-        if (!res.ok) break;
-        const data: { items: { track: SpotifyTrack | null }[]; next: string | null } = await res.json();
-        for (const item of data.items) {
-          if (item.track && item.track.uri) {
-            allTracks.push(item.track);
+        if (!res.ok) {
+          setTracksError(`Spotify a refuse la lecture de la playlist (HTTP ${res.status}).`);
+          break;
+        }
+        const data: { items: PlaylistEntry[]; next: string | null } = await res.json();
+        for (const entry of data.items ?? []) {
+          const track = entry.item ?? entry.track;
+          if (track?.uri) {
+            allTracks.push(track);
           }
         }
         url = data.next;
@@ -89,6 +103,11 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
     if (playbackMode === 'preview') {
       available = available.filter(t => t.preview_url);
       if (available.length === 0) {
+        // Spotify ne fournit plus d'extraits : sans compte Premium il n'y a
+        // rien a jouer. On le dit au lieu d'echouer en silence.
+        setTracksError(
+          "Spotify ne fournit plus d'extraits de 30 secondes. Le mode musical necessite un compte Spotify Premium."
+        );
         setTrackLoading(false);
         return;
       }
@@ -103,7 +122,7 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
         current_track_uri: track.uri,
         current_track_name: track.name,
         current_track_artist: track.artists.map(a => a.name).join(', '),
-        current_track_preview_url: track.preview_url,
+        current_track_preview_url: track.preview_url ?? null,
         played_track_uris: [...playedUris, track.uri],
       })
       .eq('session_id', sessionId);
@@ -143,6 +162,12 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
 
   return (
     <div className="space-y-4">
+      {tracksError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {tracksError}
+        </div>
+      )}
+
       {/* Now playing */}
       <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-xl p-5 text-white">
         <div className="flex items-center gap-3 mb-4">
