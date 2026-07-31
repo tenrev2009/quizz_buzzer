@@ -118,22 +118,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { email, password } = guestCreds(cleanCode, cleanName);
 
     let uid: string | null = null;
+
+    // Try sign in first (existing account with matching password)
     const signIn = await supabase.auth.signInWithPassword({ email, password });
     if (!signIn.error && signIn.data.user) {
       uid = signIn.data.user.id;
     } else {
+      // Try sign up
       const signUp = await supabase.auth.signUp({ email, password });
       if (signUp.error) {
-        throw new Error("Impossible de rejoindre: " + signUp.error.message);
-      }
-      uid = signUp.data.user?.id ?? null;
-      if (!signUp.data.session) {
-        const retry = await supabase.auth.signInWithPassword({ email, password });
-        if (retry.error) throw new Error('Connexion échouée: ' + retry.error.message);
-        uid = retry.data.user?.id ?? uid;
+        // If user exists but password doesn't match (old hash), use a variant
+        if (signUp.error.message.includes('already been registered') || signUp.error.message.includes('already registered')) {
+          const suffix = Date.now().toString(36);
+          const altEmail = `guest_${cleanCode.toLowerCase()}_${slug(cleanName)}_${suffix}@quiz-guest.local`;
+          const signUp2 = await supabase.auth.signUp({ email: altEmail, password });
+          if (signUp2.error) throw new Error("Impossible de rejoindre: " + signUp2.error.message);
+          uid = signUp2.data.user?.id ?? null;
+          if (!signUp2.data.session) {
+            const retry = await supabase.auth.signInWithPassword({ email: altEmail, password });
+            if (retry.error) throw new Error('Connexion echouee');
+            uid = retry.data.user?.id ?? uid;
+          }
+        } else {
+          throw new Error("Impossible de rejoindre: " + signUp.error.message);
+        }
+      } else {
+        uid = signUp.data.user?.id ?? null;
+        if (!signUp.data.session) {
+          const retry = await supabase.auth.signInWithPassword({ email, password });
+          if (retry.error) throw new Error('Connexion echouee');
+          uid = retry.data.user?.id ?? uid;
+        }
       }
     }
-    if (!uid) throw new Error('Connexion échouée');
+    if (!uid) throw new Error('Connexion echouee');
 
     const { error: pErr } = await supabase.from('profiles').upsert({
       id: uid, display_name: cleanName, role: 'player',
