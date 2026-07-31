@@ -39,7 +39,16 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
   const [revealed, setRevealed] = useState(false);
   const prevRoundStatusRef = useRef<string | null>(null);
 
+  const roundStatusInitialisedRef = useRef(false);
+
   useEffect(() => {
+    // Au montage il n'y a pas de transition a rattraper : piloter le lecteur
+    // ici reviendrait a le faire avant tout chargement de piste.
+    if (!roundStatusInitialisedRef.current) {
+      roundStatusInitialisedRef.current = true;
+      prevRoundStatusRef.current = roundStatus;
+      return;
+    }
     if (prevRoundStatusRef.current !== 'buzzed' && roundStatus === 'buzzed') {
       player.pause();
     }

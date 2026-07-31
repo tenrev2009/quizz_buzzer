@@ -219,26 +219,50 @@ export function useSpotifyPlayer(
       }
 
       setState(s => ({ ...s, isPlaying: true, position: 0, error: null }));
+
+      // Un ordre accepte ne garantit pas que le son sorte de ce navigateur :
+      // un autre appareil Spotify actif peut avoir garde la main.
+      window.setTimeout(async () => {
+        const st = await playerRef.current?.getCurrentState?.();
+        if (!st) {
+          setState(s => ({
+            ...s,
+            error: "Spotify a accepte l'ordre mais aucune lecture n'a demarre dans ce navigateur. Un autre appareil Spotify a probablement la main : fermez l'application Spotify sur vos autres appareils, puis relancez.",
+          }));
+        }
+      }, 2500);
     }
   }, [mode, accessToken, ensureDevice]);
 
-  const pause = useCallback(() => {
+  // Le SDK repond « no list was loaded » si on le pilote avant qu'une piste
+  // n'ait ete chargee. getCurrentState() vaut null dans ce cas.
+  const hasLoadedTrack = useCallback(async () => {
+    const p = playerRef.current;
+    if (!p) return false;
+    try {
+      return !!(await p.getCurrentState());
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const pause = useCallback(async () => {
     if (mode === 'preview') {
       audioRef.current?.pause();
       setState(s => ({ ...s, isPlaying: false }));
-    } else {
-      playerRef.current?.pause();
+    } else if (await hasLoadedTrack()) {
+      await playerRef.current?.pause();
     }
-  }, [mode]);
+  }, [mode, hasLoadedTrack]);
 
-  const resume = useCallback(() => {
+  const resume = useCallback(async () => {
     if (mode === 'preview') {
       audioRef.current?.play();
       setState(s => ({ ...s, isPlaying: true }));
-    } else {
-      playerRef.current?.resume();
+    } else if (await hasLoadedTrack()) {
+      await playerRef.current?.resume();
     }
-  }, [mode]);
+  }, [mode, hasLoadedTrack]);
 
   const setVolume = useCallback((vol: number) => {
     if (mode === 'preview') {
