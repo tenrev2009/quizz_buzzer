@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import type { QuizQuestion, QuestionType } from '../types';
 import QuizGenerator from './QuizGenerator';
+import QuizImport from './QuizImport';
 import { Plus, Trash2, GripVertical, Check, CircleDot, Zap } from 'lucide-react';
 
 interface Props {
@@ -94,6 +95,12 @@ export default function QuizEditor({ sessionId }: Props) {
         sessionId={sessionId}
         startPosition={questions.length}
         onGenerated={fetchQuestions}
+      />
+
+      <QuizImport
+        sessionId={sessionId}
+        startPosition={questions.length}
+        onImported={fetchQuestions}
       />
 
       {questions.length === 0 && (
