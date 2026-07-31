@@ -283,8 +283,18 @@ function parseJson(text: string): ParseResult {
   return { questions, issues, format: 'json' };
 }
 
+/**
+ * Les assistants externes encadrent presque toujours leur reponse dans un bloc
+ * markdown. Le coller tel quel est le geste naturel : on retire la cloture
+ * plutot que de renvoyer une erreur de syntaxe.
+ */
+function stripCodeFence(text: string): string {
+  const match = text.match(/^```[a-zA-Z]*\s*\n([\s\S]*?)\n?```\s*$/);
+  return match ? match[1].trim() : text;
+}
+
 export function parseQuiz(text: string): ParseResult {
-  const trimmed = text.trim();
+  const trimmed = stripCodeFence(text.trim());
   if (!trimmed) return { questions: [], issues: [], format: 'csv' };
   const isJson = trimmed.startsWith('[') || trimmed.startsWith('{');
   return isJson ? parseJson(trimmed) : parseCsv(trimmed);
