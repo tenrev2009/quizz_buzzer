@@ -418,9 +418,35 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
 
                     {currentRound.status === 'open' && (
                       <div className="text-center py-8 border-2 border-dashed border-amber-300 bg-amber-50 rounded-lg">
-                        <div className="inline-flex w-3 h-3 bg-green-500 rounded-full animate-pulse mb-2"></div>
-                        <p className="text-amber-900 font-semibold">Manche ouverte - en attente du premier buzz</p>
-                        <p className="text-xs text-amber-700 mt-1">{blockedIds.length} joueur(s) bloque(s)</p>
+                        {blockedIds.length >= players.length && players.length > 0 ? (
+                          <>
+                            <div className="inline-flex w-3 h-3 bg-red-500 rounded-full mb-2"></div>
+                            <p className="text-red-800 font-semibold">Tous les joueurs sont bloques !</p>
+                            <p className="text-xs text-red-600 mt-1">Personne ne peut plus buzzer sur cette question.</p>
+                            <div className="flex gap-3 justify-center mt-4">
+                              <button
+                                onClick={nextQuestion}
+                                disabled={loading}
+                                className="flex items-center gap-2 px-5 py-2.5 bg-amber-400 text-slate-900 font-bold rounded-lg hover:bg-amber-300 disabled:opacity-50 transition"
+                              >
+                                <ChevronRight className="w-5 h-5" /> Question suivante
+                              </button>
+                              <button
+                                onClick={resetRound}
+                                disabled={loading}
+                                className="flex items-center gap-2 px-5 py-2.5 bg-slate-200 text-slate-700 font-semibold rounded-lg hover:bg-slate-300 disabled:opacity-50 transition"
+                              >
+                                <RotateCcw className="w-4 h-4" /> Debloquer tout
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="inline-flex w-3 h-3 bg-green-500 rounded-full animate-pulse mb-2"></div>
+                            <p className="text-amber-900 font-semibold">Manche ouverte - en attente du premier buzz</p>
+                            {blockedIds.length > 0 && <p className="text-xs text-amber-700 mt-1">{blockedIds.length} joueur(s) bloque(s)</p>}
+                          </>
+                        )}
                       </div>
                     )}
 
