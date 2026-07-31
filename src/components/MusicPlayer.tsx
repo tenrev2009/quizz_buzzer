@@ -243,7 +243,14 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
             </button>
           ) : (
             <button
-              onClick={() => config?.current_track_name ? player.resume() : playNextTrack()}
+              onClick={() => {
+                player.activate();
+                if (config?.current_track_uri) {
+                  void player.resumeOrPlay(config.current_track_uri);
+                } else {
+                  void playNextTrack();
+                }
+              }}
               disabled={trackLoading}
               className="w-12 h-12 rounded-full bg-white text-slate-900 flex items-center justify-center hover:scale-105 transition disabled:opacity-50"
             >
@@ -276,6 +283,24 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
           </div>
         </div>
       </div>
+
+      {/* Etat reel du lecteur Spotify, distinct de ce que dit la base */}
+      {playbackMode === 'premium' && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-600 space-y-1">
+          <div className="flex items-center gap-2">
+            <span className={`inline-block w-2 h-2 rounded-full ${player.ready ? 'bg-green-500' : 'bg-slate-300'}`} />
+            <span>Lecteur Spotify : {player.ready ? 'pret' : 'non initialise'}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`inline-block w-2 h-2 rounded-full ${player.isPlaying ? 'bg-green-500' : 'bg-slate-300'}`} />
+            <span>
+              {player.trackName
+                ? `${player.isPlaying ? 'Lecture' : 'En pause'} : ${player.trackName} (${Math.floor(player.position / 1000)}s)`
+                : 'Aucune piste chargee dans ce navigateur'}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Info */}
       <div className="flex items-center gap-2 text-xs text-slate-500">

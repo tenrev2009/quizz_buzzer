@@ -14,6 +14,7 @@ interface SpotifyPlayerHook extends PlayerState {
   play: (uriOrPreviewUrl: string) => Promise<void>;
   pause: () => void;
   resume: () => void;
+  resumeOrPlay: (uri: string | null) => Promise<void>;
   setVolume: (vol: number) => void;
   /**
    * Leve le blocage d'autoplay du navigateur. Doit etre appelee de facon
@@ -291,6 +292,21 @@ export function useSpotifyPlayer(
     }
   }, [mode, hasLoadedTrack]);
 
+  // Le bouton Play doit relancer reellement le morceau quand le SDK de ce
+  // navigateur n'a rien de charge : un resume() n'aurait aucun effet.
+  const resumeOrPlay = useCallback(async (uri: string | null) => {
+    if (mode === 'preview') {
+      audioRef.current?.play();
+      setState(s => ({ ...s, isPlaying: true }));
+      return;
+    }
+    if (await hasLoadedTrack()) {
+      await playerRef.current?.resume();
+      return;
+    }
+    if (uri) await play(uri);
+  }, [mode, hasLoadedTrack, play]);
+
   const setVolume = useCallback((vol: number) => {
     if (mode === 'preview') {
       if (audioRef.current) audioRef.current.volume = vol;
@@ -299,5 +315,5 @@ export function useSpotifyPlayer(
     }
   }, [mode]);
 
-  return { ...state, play, pause, resume, setVolume, activate };
+  return { ...state, play, pause, resume, resumeOrPlay, setVolume, activate };
 }
