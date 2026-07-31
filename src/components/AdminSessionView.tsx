@@ -9,7 +9,7 @@ import SpotifyConnect from './SpotifyConnect';
 import SpotifyPlaylistPicker from './SpotifyPlaylistPicker';
 import MusicPlayer from './MusicPlayer';
 import type { QuizQuestion, MusicSessionConfig } from '../types';
-import { ArrowLeft, Play, Check, X, RotateCcw, RefreshCw, Users, Copy, ListChecks, ChevronRight, Music } from 'lucide-react';
+import { ArrowLeft, Play, Check, X, RotateCcw, RefreshCw, Users, Copy, ListChecks, ChevronRight, Music, Loader2 } from 'lucide-react';
 
 interface Props { sessionId: string; onBack: () => void; }
 
