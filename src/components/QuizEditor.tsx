@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import type { QuizQuestion, QuestionType } from '../types';
+import QuizGenerator from './QuizGenerator';
 import { Plus, Trash2, GripVertical, Check, CircleDot, Zap } from 'lucide-react';
 
 interface Props {
@@ -89,10 +90,16 @@ export default function QuizEditor({ sessionId }: Props) {
         </button>
       </div>
 
+      <QuizGenerator
+        sessionId={sessionId}
+        startPosition={questions.length}
+        onGenerated={fetchQuestions}
+      />
+
       {questions.length === 0 && (
         <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl">
           <p className="text-slate-400 mb-2">Aucune question</p>
-          <p className="text-xs text-slate-400">Ajoutez des questions pour commencer le quiz</p>
+          <p className="text-xs text-slate-400">Generez un QCM ci-dessus, ou ajoutez vos questions une par une</p>
         </div>
       )}
 
