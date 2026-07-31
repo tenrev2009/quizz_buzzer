@@ -162,9 +162,16 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
 
   return (
     <div className="space-y-4">
-      {tracksError && (
+      {(tracksError || player.error) && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {tracksError}
+          {tracksError ?? player.error}
+        </div>
+      )}
+
+      {playbackMode === 'premium' && !player.ready && !player.error && (
+        <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+          <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />
+          <span className="text-sm text-slate-500">Initialisation du lecteur Spotify...</span>
         </div>
       )}
 

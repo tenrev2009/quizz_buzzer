@@ -52,7 +52,12 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
         spotify_playlist_name: playlist.name,
         playback_mode: playbackMode,
       }, { onConflict: 'session_id' });
-    if (!error) fetchMusicConfig();
+    if (error) {
+      setErr(`Impossible d'enregistrer la playlist : ${error.message}`);
+      return;
+    }
+    setErr(null);
+    fetchMusicConfig();
   };
 
   const onMusicTrackStarted = () => {
@@ -526,7 +531,7 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                 )}
 
                 {/* Current round - buzzer mode (same as before + QCM buzzer-type questions) */}
-                {currentRound && !isMusic && (!isQcm || (currentQuestion && currentQuestion.question_type === 'buzzer')) && (
+                {currentRound && (isMusic || !isQcm || (currentQuestion && currentQuestion.question_type === 'buzzer')) && (
                   <>
                     {currentQuestion && (
                       <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-5 mb-4">

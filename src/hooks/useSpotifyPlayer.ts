@@ -84,6 +84,15 @@ export function useSpotifyPlayer(
       player.addListener('initialization_error', ({ message }: { message: string }) => {
         setState(s => ({ ...s, error: message }));
       });
+      player.addListener('authentication_error', ({ message }: { message: string }) => {
+        setState(s => ({ ...s, error: `Authentification Spotify refusee : ${message}` }));
+      });
+      player.addListener('account_error', ({ message }: { message: string }) => {
+        setState(s => ({ ...s, error: `Compte Spotify incompatible (Premium requis) : ${message}` }));
+      });
+      player.addListener('playback_error', ({ message }: { message: string }) => {
+        setState(s => ({ ...s, error: `Erreur de lecture : ${message}` }));
+      });
 
       player.connect();
       playerRef.current = player;
@@ -128,8 +137,13 @@ export function useSpotifyPlayer(
         if (positionIntervalRef.current) clearInterval(positionIntervalRef.current);
       });
 
-      await audio.play();
-      setState(s => ({ ...s, isPlaying: true, position: 0 }));
+      try {
+        await audio.play();
+      } catch (e) {
+        setState(s => ({ ...s, isPlaying: false, error: `Lecture impossible : ${(e as Error).message}` }));
+        return;
+      }
+      setState(s => ({ ...s, isPlaying: true, position: 0, error: null }));
 
       if (positionIntervalRef.current) clearInterval(positionIntervalRef.current);
       positionIntervalRef.current = window.setInterval(() => {
@@ -138,8 +152,24 @@ export function useSpotifyPlayer(
         }
       }, 200);
     } else {
-      if (!accessToken || !deviceIdRef.current) return;
-      await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`, {
+      if (!accessToken) {
+        setState(s => ({ ...s, error: 'Jeton Spotify indisponible.' }));
+        return;
+      }
+      if (!deviceIdRef.current) {
+        setState(s => ({ ...s, error: "Le lecteur Spotify n'est pas encore pret. Patientez quelques secondes puis reessayez." }));
+        return;
+      }
+
+      // Les navigateurs bloquent la lecture non declenchee par l'utilisateur.
+      // activateElement doit etre appele dans la foulee du clic.
+      try {
+        await playerRef.current?.activateElement?.();
+      } catch {
+        // Sans importance si le navigateur n'en a pas besoin.
+      }
+
+      const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`, {
         method: 'PUT',
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -147,7 +177,15 @@ export function useSpotifyPlayer(
         },
         body: JSON.stringify({ uris: [uriOrPreviewUrl] }),
       });
-      setState(s => ({ ...s, isPlaying: true, position: 0 }));
+
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null);
+        const message = detail?.error?.message ?? `HTTP ${res.status}`;
+        setState(s => ({ ...s, isPlaying: false, error: `Spotify a refuse la lecture : ${message}` }));
+        return;
+      }
+
+      setState(s => ({ ...s, isPlaying: true, position: 0, error: null }));
     }
   }, [mode, accessToken]);
 
