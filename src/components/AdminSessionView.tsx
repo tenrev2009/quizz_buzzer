@@ -355,20 +355,34 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                 )}
 
                 {/* Current round - Music mode */}
-                {currentRound && isMusic && spotify.connected && musicConfig && spotify.accessToken && (
+                {currentRound && isMusic && (
                   <div className="space-y-4">
-                    <MusicPlayer
-                      sessionId={sessionId}
-                      accessToken={spotify.accessToken}
-                      playbackMode={musicConfig.playback_mode}
-                      config={musicConfig}
-                      onTrackStarted={() => {
-                        fetchMusicConfig();
-                        refresh();
-                        ping();
-                      }}
-                      roundStatus={currentRound.status}
-                    />
+                    {spotify.loading && (
+                      <div className="flex items-center gap-3 py-6 justify-center">
+                        <Loader2 className="w-5 h-5 text-slate-400 animate-spin" />
+                        <span className="text-sm text-slate-500">Connexion Spotify...</span>
+                      </div>
+                    )}
+                    {!spotify.loading && !spotify.connected && (
+                      <SpotifyConnect />
+                    )}
+                    {spotify.connected && musicConfig && spotify.accessToken && (
+                      <MusicPlayer
+                        sessionId={sessionId}
+                        accessToken={spotify.accessToken}
+                        playbackMode={musicConfig.playback_mode}
+                        config={musicConfig}
+                        onTrackStarted={() => {
+                          fetchMusicConfig();
+                          refresh();
+                          ping();
+                        }}
+                        roundStatus={currentRound.status}
+                      />
+                    )}
+                    {spotify.connected && !musicConfig && (
+                      <div className="text-center py-4 text-slate-500 text-sm">Configuration musicale manquante. Veuillez reinitialiser la manche.</div>
+                    )}
                   </div>
                 )}
 
@@ -512,7 +526,7 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                 )}
 
                 {/* Current round - buzzer mode (same as before + QCM buzzer-type questions) */}
-                {currentRound && (!isQcm || (currentQuestion && currentQuestion.question_type === 'buzzer')) && (
+                {currentRound && !isMusic && (!isQcm || (currentQuestion && currentQuestion.question_type === 'buzzer')) && (
                   <>
                     {currentQuestion && (
                       <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-5 mb-4">
