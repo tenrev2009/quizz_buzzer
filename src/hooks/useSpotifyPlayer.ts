@@ -15,6 +15,12 @@ interface SpotifyPlayerHook extends PlayerState {
   pause: () => void;
   resume: () => void;
   setVolume: (vol: number) => void;
+  /**
+   * Leve le blocage d'autoplay du navigateur. Doit etre appelee de facon
+   * synchrone depuis le gestionnaire de clic : apres le moindre await, le
+   * navigateur ne considere plus l'action comme declenchee par l'utilisateur.
+   */
+  activate: () => void;
 }
 
 export function useSpotifyPlayer(
@@ -124,6 +130,15 @@ export function useSpotifyPlayer(
     };
   }, []);
 
+  const activate = useCallback(() => {
+    // Volontairement non-async : l'appel doit partir dans la pile du clic.
+    try {
+      playerRef.current?.activateElement?.();
+    } catch {
+      // Sans importance si le navigateur n'en a pas besoin.
+    }
+  }, []);
+
   // Reconnecte le lecteur si besoin et attend qu'un peripherique soit annonce.
   const ensureDevice = useCallback(async (): Promise<string | null> => {
     if (deviceIdRef.current) return deviceIdRef.current;
@@ -177,8 +192,9 @@ export function useSpotifyPlayer(
         setState(s => ({ ...s, error: 'Jeton Spotify indisponible.' }));
         return;
       }
-      // Les navigateurs bloquent la lecture non declenchee par l'utilisateur.
-      // activateElement doit etre appele dans la foulee du clic.
+      // Filet de securite si play() est declenche directement par un clic.
+      // La levee du blocage d'autoplay se fait normalement via activate(),
+      // appelee en tete du gestionnaire, avant tout await.
       try {
         await playerRef.current?.activateElement?.();
       } catch {
@@ -200,6 +216,17 @@ export function useSpotifyPlayer(
         setState(s => ({ ...s, error: "Le lecteur Spotify n'a pas pu s'enregistrer. Verifiez que l'onglet est au premier plan, puis reessayez." }));
         return;
       }
+
+      // Rend ce navigateur appareil actif : sans cela, un autre appareil
+      // Spotify allume peut conserver la lecture et le navigateur reste muet.
+      await fetch('https://api.spotify.com/v1/me/player', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ device_ids: [device], play: false }),
+      }).catch(() => null);
 
       let res = await sendPlay(device);
 
@@ -272,5 +299,5 @@ export function useSpotifyPlayer(
     }
   }, [mode]);
 
-  return { ...state, play, pause, resume, setVolume };
+  return { ...state, play, pause, resume, setVolume, activate };
 }

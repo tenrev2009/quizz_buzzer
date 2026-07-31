@@ -95,6 +95,12 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
 
   const playNextTrack = useCallback(async () => {
     if (tracks.length === 0) return;
+
+    // Doit rester la premiere instruction : les await qui suivent font perdre
+    // au navigateur le contexte de geste utilisateur, et sans ce contexte la
+    // lecture est bloquee en silence.
+    player.activate();
+
     setTrackLoading(true);
     setRevealed(false);
 
