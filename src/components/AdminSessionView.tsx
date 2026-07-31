@@ -132,6 +132,7 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
     const { error } = await supabase.rpc('resolve_round', { p_round_id: currentRound.id, p_correct: correct });
     if (error) throw error;
     if (correct && isQcm) fetchPlayedQuestions();
+    if (isMusic) fetchMusicConfig();
   });
 
   const resolveQcm = () => run(async () => {
@@ -145,7 +146,8 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
     if (!currentRound) return;
     const { error } = await supabase.rpc('skip_qcm_round', { p_round_id: currentRound.id });
     if (error) throw error;
-    fetchPlayedQuestions();
+    if (isQcm) fetchPlayedQuestions();
+    if (isMusic) fetchMusicConfig();
   });
 
   const finishGame = () => run(async () => {

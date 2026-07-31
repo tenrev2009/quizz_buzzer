@@ -34,6 +34,9 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
     if (prevRoundStatusRef.current !== 'buzzed' && roundStatus === 'buzzed') {
       player.pause();
     }
+    if (prevRoundStatusRef.current === 'buzzed' && roundStatus === 'open') {
+      player.resume();
+    }
     prevRoundStatusRef.current = roundStatus;
   }, [roundStatus]);
 
