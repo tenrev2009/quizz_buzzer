@@ -45,6 +45,9 @@ export function useSpotifyPlayer(
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playerRef = useRef<any>(null);
   const deviceIdRef = useRef<string | null>(null);
+  // Morceau reellement charge dans le SDK, pour distinguer une reprise d'un
+  // nouveau morceau selectionne mais pas encore lance.
+  const loadedUriRef = useRef<string | null>(null);
   const positionIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -297,6 +300,7 @@ export function useSpotifyPlayer(
         return;
       }
 
+      loadedUriRef.current = uriOrPreviewUrl;
       setState(s => ({ ...s, isPlaying: true, position: 0, error: null }));
     }
   }, [mode, accessToken, ensureDevice, listDevices]);
@@ -345,7 +349,10 @@ export function useSpotifyPlayer(
     // Une piste arrivee a son terme reste « chargee » mais en pause a la fin :
     // un resume() n'y produirait aucun son, il faut la relancer.
     const finished = !!st && st.paused && st.position >= Math.max(0, st.duration - 1500);
-    if (st && !finished) {
+    // Un morceau selectionne depuis « Suivant » n'est pas celui que le SDK a
+    // en memoire : le reprendre relancerait le precedent.
+    const isLoaded = !!uri && loadedUriRef.current === uri;
+    if (st && !finished && isLoaded) {
       await playerRef.current?.resume();
       return;
     }

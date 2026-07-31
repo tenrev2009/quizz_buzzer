@@ -28,6 +28,7 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
 
   const spotify = useSpotifyAuth();
   const [musicConfig, setMusicConfig] = useState<MusicSessionConfig | null>(null);
+  const [changingPlaylist, setChangingPlaylist] = useState(false);
 
   const fetchMusicConfig = useCallback(async () => {
     const { data } = await supabase
@@ -51,12 +52,20 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
         spotify_playlist_id: playlist.id,
         spotify_playlist_name: playlist.name,
         playback_mode: playbackMode,
+        // Nouvelle playlist : l'historique et le morceau courant portaient sur
+        // l'ancienne, les conserver fausserait le tirage.
+        current_track_uri: null,
+        current_track_name: null,
+        current_track_artist: null,
+        current_track_preview_url: null,
+        played_track_uris: [],
       }, { onConflict: 'session_id' });
     if (error) {
       setErr(`Impossible d'enregistrer la playlist : ${error.message}`);
       return;
     }
     setErr(null);
+    setChangingPlaylist(false);
     fetchMusicConfig();
   };
 
@@ -66,6 +75,22 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
       if (error) throw error;
     });
   };
+
+  const playlistHeader = (
+    <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+      <Music className="w-5 h-5 text-[#1DB954]" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-slate-800 truncate">{musicConfig?.spotify_playlist_name}</p>
+        <p className="text-xs text-slate-500">{musicConfig?.playback_mode === 'premium' ? 'Lecture complete' : 'Extraits 30s'}</p>
+      </div>
+      <button
+        onClick={() => setChangingPlaylist(true)}
+        className="text-xs font-medium text-slate-600 hover:text-[#1DB954] transition whitespace-nowrap"
+      >
+        Changer de playlist
+      </button>
+    </div>
+  );
 
   const fetchQuestions = async () => {
     const { data } = await supabase
@@ -321,39 +346,36 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                     {!spotify.connected && (
                       <SpotifyConnect />
                     )}
-                    {spotify.connected && !musicConfig && spotify.accessToken && (
+                    {spotify.connected && spotify.accessToken && (!musicConfig || changingPlaylist) && (
                       <div>
-                        <p className="text-slate-700 font-medium mb-3">Choisissez une playlist :</p>
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-slate-700 font-medium">Choisissez une playlist :</p>
+                          {musicConfig && (
+                            <button onClick={() => setChangingPlaylist(false)} className="text-xs text-slate-500 hover:text-slate-800 transition">
+                              Annuler
+                            </button>
+                          )}
+                        </div>
                         <SpotifyPlaylistPicker
                           accessToken={spotify.accessToken}
                           onSelect={selectPlaylist}
+                          selectedId={musicConfig?.spotify_playlist_id}
                         />
                       </div>
                     )}
-                    {spotify.connected && musicConfig && spotify.accessToken && (
+                    {spotify.connected && musicConfig && !changingPlaylist && spotify.accessToken && (
                       <div className="space-y-4">
-                        <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                          <Music className="w-5 h-5 text-[#1DB954]" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-800 truncate">{musicConfig.spotify_playlist_name}</p>
-                            <p className="text-xs text-slate-500">{musicConfig.playback_mode === 'premium' ? 'Lecture complete' : 'Extraits 30s'}</p>
-                          </div>
-                          <button
-                            onClick={() => { setMusicConfig(null); supabase.from('music_session_config').delete().eq('session_id', sessionId); }}
-                            className="text-xs text-slate-500 hover:text-red-500 transition"
-                          >
-                            Changer
-                          </button>
-                        </div>
+                        {playlistHeader}
                         <MusicPlayer
                           sessionId={sessionId}
                           accessToken={spotify.accessToken}
                           playbackMode={musicConfig.playback_mode}
                           config={musicConfig}
+                          onTrackSelected={fetchMusicConfig}
                           onTrackStarted={onMusicTrackStarted}
                           roundStatus={null}
                         />
-                        <p className="text-center text-sm text-slate-500">Cliquez play pour lancer le premier morceau et demarrer la manche</p>
+                        <p className="text-center text-sm text-slate-500">Choisissez un morceau avec Suivant, puis lancez-le avec Play pour demarrer la manche</p>
                       </div>
                     )}
                   </div>
@@ -371,19 +393,38 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                     {!spotify.loading && !spotify.connected && (
                       <SpotifyConnect />
                     )}
-                    {spotify.connected && musicConfig && spotify.accessToken && (
-                      <MusicPlayer
-                        sessionId={sessionId}
-                        accessToken={spotify.accessToken}
-                        playbackMode={musicConfig.playback_mode}
-                        config={musicConfig}
-                        onTrackStarted={() => {
-                          fetchMusicConfig();
-                          refresh();
-                          ping();
-                        }}
-                        roundStatus={currentRound.status}
-                      />
+                    {spotify.connected && musicConfig && changingPlaylist && spotify.accessToken && (
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <p className="text-slate-700 font-medium">Choisissez une playlist :</p>
+                          <button onClick={() => setChangingPlaylist(false)} className="text-xs text-slate-500 hover:text-slate-800 transition">
+                            Annuler
+                          </button>
+                        </div>
+                        <SpotifyPlaylistPicker
+                          accessToken={spotify.accessToken}
+                          onSelect={selectPlaylist}
+                          selectedId={musicConfig.spotify_playlist_id}
+                        />
+                      </div>
+                    )}
+                    {spotify.connected && musicConfig && !changingPlaylist && spotify.accessToken && (
+                      <>
+                        {playlistHeader}
+                        <MusicPlayer
+                          sessionId={sessionId}
+                          accessToken={spotify.accessToken}
+                          playbackMode={musicConfig.playback_mode}
+                          config={musicConfig}
+                          onTrackSelected={fetchMusicConfig}
+                          onTrackStarted={() => {
+                            fetchMusicConfig();
+                            refresh();
+                            ping();
+                          }}
+                          roundStatus={currentRound.status}
+                        />
+                      </>
                     )}
                     {spotify.connected && !musicConfig && (
                       <div className="text-center py-4 text-slate-500 text-sm">Configuration musicale manquante. Veuillez reinitialiser la manche.</div>

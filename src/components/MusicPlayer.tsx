@@ -24,11 +24,14 @@ interface Props {
   accessToken: string;
   playbackMode: 'preview' | 'premium';
   config: MusicSessionConfig | null;
+  /** Un morceau vient d'etre choisi, sans etre lance. */
+  onTrackSelected: () => void;
+  /** La lecture demarre : c'est le moment d'ouvrir la manche aux buzzers. */
   onTrackStarted: () => void;
   roundStatus: string | null;
 }
 
-export default function MusicPlayer({ sessionId, accessToken, playbackMode, config, onTrackStarted, roundStatus }: Props) {
+export default function MusicPlayer({ sessionId, accessToken, playbackMode, config, onTrackSelected, onTrackStarted, roundStatus }: Props) {
   const player = useSpotifyPlayer(playbackMode, accessToken);
   const [tracks, setTracks] = useState<SpotifyTrack[]>([]);
   const [loadingTracks, setLoadingTracks] = useState(false);
@@ -36,7 +39,6 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
   const [volume, setVolume] = useState(0.8);
   const [muted, setMuted] = useState(false);
   const [trackLoading, setTrackLoading] = useState(false);
-  const [revealed, setRevealed] = useState(false);
   const prevRoundStatusRef = useRef<string | null>(null);
 
   const roundStatusInitialisedRef = useRef(false);
@@ -93,16 +95,16 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
     fetchPlaylistTracks();
   }, [fetchPlaylistTracks]);
 
-  const playNextTrack = useCallback(async () => {
+  // Choisit le morceau suivant sans le lancer : c'est l'admin qui declenche la
+  // lecture par Play, y compris apres plusieurs passages d'affilee.
+  const selectNextTrack = useCallback(async () => {
     if (tracks.length === 0) return;
 
-    // Doit rester la premiere instruction : les await qui suivent font perdre
-    // au navigateur le contexte de geste utilisateur, et sans ce contexte la
-    // lecture est bloquee en silence.
-    player.activate();
-
     setTrackLoading(true);
-    setRevealed(false);
+
+    // Un morceau en cours ne doit pas continuer pendant qu'on change de
+    // question.
+    player.pause();
 
     const playedUris = config?.played_track_uris ?? [];
     let available = tracks.filter(t => !playedUris.includes(t.uri));
@@ -128,12 +130,6 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
     const randomIndex = Math.floor(Math.random() * available.length);
     const track = available[randomIndex];
 
-    // Le son d'abord : faire precer deux ecritures reseau rendait le bouton
-    // lent a repondre alors que rien n'en dependait.
-    const playTarget = playbackMode === 'premium' ? track.uri : track.preview_url!;
-    await player.play(playTarget);
-    setTrackLoading(false);
-
     await supabase
       .from('music_session_config')
       .update({
@@ -145,8 +141,28 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
       })
       .eq('session_id', sessionId);
 
+    setTrackLoading(false);
+    onTrackSelected();
+  }, [tracks, config, sessionId, playbackMode, player, onTrackSelected]);
+
+  // Lance le morceau selectionne. C'est ici, et seulement ici, que la manche
+  // demarre et que les joueurs peuvent buzzer.
+  const startPlayback = useCallback(async () => {
+    const uri = playbackMode === 'premium'
+      ? config?.current_track_uri
+      : config?.current_track_preview_url;
+    if (!uri) {
+      await selectNextTrack();
+      return;
+    }
+    setTrackLoading(true);
+    try {
+      await player.resumeOrPlay(uri);
+    } finally {
+      setTrackLoading(false);
+    }
     onTrackStarted();
-  }, [tracks, config, sessionId, playbackMode, player, onTrackStarted]);
+  }, [config, playbackMode, player, selectNextTrack, onTrackStarted]);
 
   const toggleMute = () => {
     if (muted) {
@@ -197,15 +213,10 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
             <Music className="w-6 h-6 text-[#1DB954]" />
           </div>
           <div className="flex-1 min-w-0">
-            {config?.current_track_name && revealed ? (
+            {config?.current_track_name ? (
               <>
                 <p className="font-bold text-white truncate">{config.current_track_name}</p>
                 <p className="text-sm text-slate-300 truncate">{config.current_track_artist}</p>
-              </>
-            ) : config?.current_track_name && !revealed ? (
-              <>
-                <p className="font-bold text-white">???</p>
-                <p className="text-sm text-slate-400">Morceau en cours...</p>
               </>
             ) : (
               <>
@@ -214,13 +225,10 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
               </>
             )}
           </div>
-          {config?.current_track_name && !revealed && (
-            <button
-              onClick={() => setRevealed(true)}
-              className="px-3 py-1.5 text-xs font-semibold bg-white/10 hover:bg-white/20 rounded-lg transition"
-            >
-              Reveler
-            </button>
+          {config?.current_track_name && (
+            <span className={`px-2.5 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${player.isPlaying ? 'bg-[#1DB954]/20 text-[#1DB954]' : 'bg-white/10 text-slate-300'}`}>
+              {player.isPlaying ? 'En lecture' : 'En attente de Play'}
+            </span>
           )}
         </div>
 
@@ -244,30 +252,23 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
           ) : (
             <button
               onClick={() => {
+                // activate() doit partir dans la pile du clic, avant tout await.
                 player.activate();
-                if (!config?.current_track_uri) {
-                  void playNextTrack();
-                  return;
-                }
-                // Sans indicateur d'attente, un clic sans effet visible en
-                // provoquait d'autres, qui se chevauchaient.
-                setTrackLoading(true);
-                void player
-                  .resumeOrPlay(config.current_track_uri)
-                  .finally(() => setTrackLoading(false));
+                void startPlayback();
               }}
               disabled={trackLoading}
               className="w-12 h-12 rounded-full bg-white text-slate-900 flex items-center justify-center hover:scale-105 transition disabled:opacity-50"
+              title="Lancer le morceau"
             >
               {trackLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 ml-0.5" />}
             </button>
           )}
 
           <button
-            onClick={playNextTrack}
+            onClick={selectNextTrack}
             disabled={trackLoading || tracks.length === 0}
             className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition disabled:opacity-50"
-            title="Morceau suivant"
+            title="Choisir le morceau suivant (sans le lancer)"
           >
             <SkipForward className="w-4 h-4" />
           </button>
