@@ -92,7 +92,8 @@ commentaire après. Un bloc de code ```json est accepté.
     },
     {
       "question_text": "Qui a peint la Joconde ?",
-      "question_type": "buzzer"
+      "question_type": "buzzer",
+      "answer_text": "Léonard de Vinci"
     }
   ]
 }
@@ -102,8 +103,11 @@ Contraintes du format, à respecter à la lettre :
 - "question_type" vaut exactement "choice_2", "choice_4" ou "buzzer".
 - "choice_2" : "options" contient exactement 2 chaînes.
 - "choice_4" : "options" contient exactement 4 chaînes.
-- "buzzer" : n'écris ni "options" ni "correct_index". La bonne réponse n'est pas
-  stockée pour ce type, c'est le présentateur qui juge en direct.
+- "buzzer" : n'écris ni "options" ni "correct_index", mais écris toujours
+  "answer_text" avec la réponse attendue. C'est la seule trace de cette réponse :
+  elle s'affiche au présentateur pendant la manche, puis est révélée aux joueurs
+  une fois la manche tranchée. Une question buzzer sans "answer_text" laisse le
+  présentateur sans rien pour juger.
 - "correct_index" est un entier commençant à ZÉRO. La première proposition est
   0, la deuxième 1, la troisième 2, la quatrième 3. C'est l'erreur la plus
   fréquente : vérifie chaque index avant de répondre.
@@ -115,7 +119,8 @@ Avant d'envoyer ta réponse, vérifie silencieusement :
 1. Le nombre de questions de chaque type correspond à la demande.
 2. Chaque "correct_index" pointe bien sur la bonne réponse, en comptant à
    partir de 0.
-3. Aucune question "buzzer" ne contient "options" ou "correct_index".
+3. Aucune question "buzzer" ne contient "options" ou "correct_index", et
+   chacune possède bien "answer_text".
 4. Le JSON est syntaxiquement valide.
 ```
 

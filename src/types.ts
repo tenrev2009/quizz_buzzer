@@ -73,6 +73,8 @@ export interface QuizQuestion {
   question_type: QuestionType;
   options: string[] | null;
   correct_index: number | null;
+  /** Reponse attendue. Seule source pour les questions au buzzer. */
+  answer_text: string | null;
   position: number;
   created_at: string;
 }

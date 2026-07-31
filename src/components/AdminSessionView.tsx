@@ -9,7 +9,8 @@ import SpotifyConnect from './SpotifyConnect';
 import SpotifyPlaylistPicker from './SpotifyPlaylistPicker';
 import MusicPlayer from './MusicPlayer';
 import type { QuizQuestion, MusicSessionConfig } from '../types';
-import { ArrowLeft, Play, Check, X, RotateCcw, RefreshCw, Users, Copy, ListChecks, ChevronRight, Music, Loader2 } from 'lucide-react';
+import { correctAnswerText } from '../lib/questionAnswer';
+import { ArrowLeft, Play, Check, X, RotateCcw, RefreshCw, Users, Copy, ListChecks, ChevronRight, Music, Loader2, Eye } from 'lucide-react';
 
 interface Props { sessionId: string; onBack: () => void; }
 
@@ -554,6 +555,7 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                       <div className="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-5 mb-4">
                         <p className="text-xs uppercase tracking-wider text-amber-600 font-semibold mb-1">Question</p>
                         <p className="text-lg font-bold text-slate-900">{currentQuestion.question_text}</p>
+                        <AnswerForHost question={currentQuestion} />
                       </div>
                     )}
 
@@ -679,6 +681,34 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+/**
+ * Rappel de la reponse attendue, visible de l'animateur seul. Indispensable au
+ * buzzer, ou le joueur repond a l'oral et ou rien d'autre a l'ecran ne permet
+ * de trancher.
+ */
+function AnswerForHost({ question }: { question: QuizQuestion }) {
+  const answer = correctAnswerText(question);
+  if (!answer) {
+    if (question.question_type !== 'buzzer') return null;
+    return (
+      <p className="mt-3 text-xs text-amber-700">
+        Aucune reponse enregistree pour cette question — ajoutez-la dans l'onglet Questions.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-3 flex items-start gap-2 rounded-lg border border-green-300 bg-green-50 px-3 py-2">
+      <Eye className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+      <div className="min-w-0">
+        <p className="text-[11px] uppercase tracking-wider text-green-700 font-semibold">
+          Reponse attendue — visible par vous seul
+        </p>
+        <p className="text-sm font-bold text-green-900 break-words">{answer}</p>
+      </div>
     </div>
   );
 }

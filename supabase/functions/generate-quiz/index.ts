@@ -37,6 +37,8 @@ interface GeneratedQuestion {
   question_type: QuestionType;
   options: string[];
   correct_index: number;
+  /** Reponse attendue, seule source pour les questions au buzzer. */
+  answer_text: string;
 }
 
 interface RequestBody {
@@ -84,12 +86,14 @@ const QUESTION_SCHEMA = {
           },
           options: { type: "array", items: { type: "string" } },
           correct_index: { type: "integer" },
+          answer_text: { type: "string" },
         },
         required: [
           "question_text",
           "question_type",
           "options",
           "correct_index",
+          "answer_text",
         ],
         additionalProperties: false,
       },
@@ -107,6 +111,7 @@ Règles de fabrication :
 - Pour choice_2 : exactement 2 propositions, dont une seule correcte.
 - Pour choice_4 : exactement 4 propositions, dont une seule correcte. Les 3 mauvaises réponses sont plausibles et du même registre que la bonne — jamais absurdes ni manifestement fausses.
 - Pour buzzer : aucune proposition. Le joueur répond de tête, donc la réponse doit tenir en un mot ou un nom. Renvoie options: [] et correct_index: 0.
+- "answer_text" contient toujours le texte de la bonne réponse, y compris pour choice_2 et choice_4 (recopie alors la proposition correcte). Pour buzzer, c'est la seule trace de la réponse : elle est montrée à l'animateur puis révélée aux joueurs.
 - Fais varier la position de la bonne réponse entre les questions ; ne la place pas systématiquement au même index.
 - Aucune répétition : deux questions ne doivent pas porter sur le même fait.
 
@@ -205,7 +210,9 @@ async function generate(body: RequestBody, apiKey: string): Promise<GeneratedQue
   // pourrait pas etre joue (index hors bornes, mauvais nombre de propositions).
   return questions.filter((q) => {
     if (!q.question_text?.trim()) return false;
-    if (q.question_type === "buzzer") return true;
+    // Au buzzer, answer_text est la seule trace de la reponse : sans elle
+    // l'animateur n'a rien pour trancher.
+    if (q.question_type === "buzzer") return !!q.answer_text?.trim();
     const expected = q.question_type === "choice_2" ? 2 : 4;
     if (!Array.isArray(q.options) || q.options.length !== expected) return false;
     if (q.options.some((o) => !o?.trim())) return false;

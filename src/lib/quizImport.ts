@@ -5,6 +5,8 @@ export interface ParsedQuestion {
   question_type: QuestionType;
   options: string[] | null;
   correct_index: number | null;
+  /** Reponse attendue. Seule source pour les questions au buzzer. */
+  answer_text: string | null;
 }
 
 export interface ParseIssue {
@@ -151,11 +153,15 @@ function parseCsv(text: string): ParseResult {
     }
 
     if (type === 'buzzer') {
+      // La colonne bonne_reponse, inutilisee comme index ici, porte le texte
+      // de la reponse attendue.
+      const spoken = (cells[6] ?? cells[2] ?? '').trim();
       questions.push({
         question_text: questionText,
         question_type: 'buzzer',
         options: null,
         correct_index: null,
+        answer_text: spoken || null,
       });
       return;
     }
@@ -191,6 +197,7 @@ function parseCsv(text: string): ParseResult {
       question_type: type,
       options,
       correct_index: correctIndex,
+      answer_text: null,
     });
   });
 
@@ -244,11 +251,13 @@ function parseJson(text: string): ParseResult {
     }
 
     if (type === 'buzzer') {
+      const spoken = String(item.answer_text ?? item.reponse ?? '').trim();
       questions.push({
         question_text: questionText,
         question_type: 'buzzer',
         options: null,
         correct_index: null,
+        answer_text: spoken || null,
       });
       return;
     }
@@ -277,6 +286,7 @@ function parseJson(text: string): ParseResult {
       question_type: type,
       options,
       correct_index: correctIndex,
+      answer_text: null,
     });
   });
 
@@ -304,7 +314,7 @@ export function parseQuiz(text: string): ParseResult {
 export const CSV_TEMPLATE = `type;question;reponse_a;reponse_b;reponse_c;reponse_d;bonne_reponse
 4;Quelle est la capitale de l'Australie ?;Sydney;Melbourne;Canberra;Perth;C
 2;Le Nil est-il le plus long fleuve du monde ?;Oui;Non;;;A
-buzzer;Qui a peint la Joconde ?;;;;;
+buzzer;Qui a peint la Joconde ?;;;;;Leonard de Vinci
 `;
 
 /** Consigne prete a coller dans une IA externe pour obtenir un fichier valide. */
@@ -317,7 +327,8 @@ Règles :
 - Pour le type 2 : remplis reponse_a et reponse_b, laisse reponse_c et reponse_d vides.
 - Pour le type 4 : remplis les quatre colonnes.
 - Pour buzzer : laisse les quatre colonnes de réponses vides.
-- "bonne_reponse" contient la lettre A, B, C ou D. Laisse-la vide pour buzzer.
+- "bonne_reponse" contient la lettre A, B, C ou D. Pour buzzer, mets-y le texte
+  de la reponse attendue (elle est montree a l'animateur puis aux joueurs).
 - Si un texte contient un point-virgule, entoure-le de guillemets doubles.
 - Une seule bonne réponse par question ; les mauvaises doivent être plausibles.
 - Ne renvoie que le CSV, sans commentaire ni bloc de code.

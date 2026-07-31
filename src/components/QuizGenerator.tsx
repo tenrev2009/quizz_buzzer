@@ -19,6 +19,7 @@ interface GeneratedQuestion {
   question_type: QuestionType;
   options: string[];
   correct_index: number;
+  answer_text?: string;
 }
 
 interface Props {
@@ -75,9 +76,11 @@ export default function QuizGenerator({ sessionId, startPosition, onGenerated }:
         session_id: sessionId,
         question_text: q.question_text,
         question_type: q.question_type,
-        // Une question au buzzer n'a ni propositions ni bonne reponse indexee.
+        // Une question au buzzer n'a ni propositions ni bonne reponse indexee :
+        // answer_text est alors la seule trace de la reponse.
         options: q.question_type === 'buzzer' ? null : q.options,
         correct_index: q.question_type === 'buzzer' ? null : q.correct_index,
+        answer_text: q.answer_text?.trim() || null,
         position: startPosition + i,
       }));
 

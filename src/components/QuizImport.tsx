@@ -47,6 +47,7 @@ export default function QuizImport({ sessionId, startPosition, onImported }: Pro
         question_type: q.question_type,
         options: q.options,
         correct_index: q.correct_index,
+        answer_text: q.answer_text,
         position: startPosition + i,
       }));
 
@@ -167,6 +168,11 @@ export default function QuizImport({ sessionId, startPosition, onImported }: Pro
                           Bonne reponse : {q.options[q.correct_index]}
                         </p>
                       )}
+                      {q.question_type === 'buzzer' && q.answer_text && (
+                        <p className="text-slate-500 mt-1 ml-1">
+                          Reponse attendue : {q.answer_text}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -205,8 +211,9 @@ export default function QuizImport({ sessionId, startPosition, onImported }: Pro
           </button>
 
           <p className="text-xs text-slate-500">
-            Les questions au buzzer n'ont pas de reponse enregistree : c'est l'animateur qui
-            juge en direct. Une colonne de reponse remplie pour ce type est ignoree.
+            Pour une question au buzzer, la colonne « bonne_reponse » contient le texte de la
+            reponse attendue : elle vous est montree pendant la manche, puis revelee aux joueurs
+            une fois la manche tranchee.
           </p>
         </div>
       )}

@@ -219,10 +219,19 @@ function QuestionCard({ question, index, onUpdate, onDelete, onChangeType }: Que
           )}
 
           {question.question_type === 'buzzer' && (
-            <div className="py-3 px-4 bg-slate-50 rounded-lg">
-              <p className="text-sm text-slate-500 flex items-center gap-2">
-                <Zap className="w-4 h-4 text-amber-500" />
-                Mode buzzer: les joueurs buzzent et l'admin valide la réponse oralement
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                Réponse attendue <span className="text-slate-400 normal-case font-normal">(affichée à vous seul, puis révélée aux joueurs)</span>
+              </label>
+              <input
+                value={question.answer_text ?? ''}
+                onChange={e => onUpdate(question.id, { answer_text: e.target.value })}
+                placeholder="Ex : Léonard de Vinci"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 text-sm"
+              />
+              <p className="text-xs text-slate-500 flex items-center gap-2">
+                <Zap className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                Les joueurs buzzent et repondent a l'oral : c'est vous qui tranchez.
               </p>
             </div>
           )}

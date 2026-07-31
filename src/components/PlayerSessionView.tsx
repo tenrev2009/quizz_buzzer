@@ -5,6 +5,7 @@ import { useSessionRealtime } from '../hooks/useSessionRealtime';
 import Scoreboard from './Scoreboard';
 import WinnerView from './WinnerView';
 import type { QuizQuestion } from '../types';
+import { correctAnswerText } from '../lib/questionAnswer';
 import { ArrowLeft, Zap, Lock, Ban, Clock, Trophy, Check, X, Music } from 'lucide-react';
 
 interface Props { sessionId: string; onLeave: () => void; }
@@ -137,6 +138,7 @@ export default function PlayerSessionView({ sessionId, onLeave }: Props) {
   };
 
   const roundClosed = currentRound?.status === 'closed';
+  const buzzerAnswer = currentQuestion ? correctAnswerText(currentQuestion) : null;
 
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col">
@@ -257,6 +259,17 @@ export default function PlayerSessionView({ sessionId, onLeave }: Props) {
             {currentQuestion && !isMusicMode && (
               <div className="w-full max-w-lg mb-6 bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
                 <p className="text-white text-xl font-bold">{currentQuestion.question_text}</p>
+              </div>
+            )}
+
+            {/* La manche au buzzer se joue a l'oral : une fois tranchee, les
+                joueurs n'auraient aucune trace de la bonne reponse sans ceci. */}
+            {roundClosed && currentQuestion && !isMusicMode && buzzerAnswer && (
+              <div className="w-full max-w-lg mb-6 rounded-xl border border-green-500/40 bg-green-500/10 p-5 text-center">
+                <p className="text-[11px] uppercase tracking-wider text-green-400 font-semibold mb-1">
+                  La bonne reponse etait
+                </p>
+                <p className="text-green-300 text-lg font-bold break-words">{buzzerAnswer}</p>
               </div>
             )}
 
