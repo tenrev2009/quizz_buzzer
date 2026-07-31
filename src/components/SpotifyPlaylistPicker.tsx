@@ -3,9 +3,9 @@ import { Music, Search, Check, Loader2, ListMusic } from 'lucide-react';
 
 interface Playlist {
   id: string;
-  name: string;
-  images: { url: string }[];
-  tracks: { total: number };
+  name: string | null;
+  images: { url: string }[] | null;
+  tracks: { total: number } | null;
 }
 
 interface Props {
@@ -32,8 +32,10 @@ export default function SpotifyPlaylistPicker({ accessToken, onSelect, selectedI
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (!res.ok) throw new Error('Erreur lors du chargement des playlists');
-        const data: { items: Playlist[]; next: string | null } = await res.json();
-        allPlaylists.push(...data.items);
+        const data: { items: (Playlist | null)[]; next: string | null } = await res.json();
+        // Spotify renvoie parfois des entrees nulles ou sans id pour des
+        // playlists supprimees ou inaccessibles : on les ecarte.
+        allPlaylists.push(...(data.items ?? []).filter((p): p is Playlist => !!p?.id));
         url = data.next;
       }
       setPlaylists(allPlaylists);
@@ -49,7 +51,7 @@ export default function SpotifyPlaylistPicker({ accessToken, onSelect, selectedI
   }, [fetchPlaylists]);
 
   const filtered = playlists.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase())
+    (p.name ?? '').toLowerCase().includes(search.toLowerCase())
   );
 
   if (loading) {
@@ -90,7 +92,7 @@ export default function SpotifyPlaylistPicker({ accessToken, onSelect, selectedI
         {filtered.map(p => (
           <button
             key={p.id}
-            onClick={() => onSelect({ id: p.id, name: p.name })}
+            onClick={() => onSelect({ id: p.id, name: p.name ?? 'Playlist sans nom' })}
             className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition ${selectedId === p.id ? 'bg-amber-50' : ''}`}
           >
             {p.images?.[0]?.url ? (
@@ -101,8 +103,8 @@ export default function SpotifyPlaylistPicker({ accessToken, onSelect, selectedI
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-900 truncate">{p.name}</p>
-              <p className="text-xs text-slate-500">{p.tracks.total} titres</p>
+              <p className="text-sm font-medium text-slate-900 truncate">{p.name ?? 'Playlist sans nom'}</p>
+              <p className="text-xs text-slate-500">{p.tracks?.total ?? 0} titres</p>
             </div>
             {selectedId === p.id && <Check className="w-5 h-5 text-amber-500 flex-shrink-0" />}
           </button>
