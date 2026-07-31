@@ -425,18 +425,18 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                             <p className="text-xs text-red-600 mt-1">Personne ne peut plus buzzer sur cette question.</p>
                             <div className="flex gap-3 justify-center mt-4">
                               <button
-                                onClick={nextQuestion}
+                                onClick={resetRound}
                                 disabled={loading}
                                 className="flex items-center gap-2 px-5 py-2.5 bg-amber-400 text-slate-900 font-bold rounded-lg hover:bg-amber-300 disabled:opacity-50 transition"
                               >
-                                <ChevronRight className="w-5 h-5" /> Question suivante
+                                <RotateCcw className="w-4 h-4" /> Relancer la question
                               </button>
                               <button
-                                onClick={resetRound}
+                                onClick={skipQuestion}
                                 disabled={loading}
-                                className="flex items-center gap-2 px-5 py-2.5 bg-slate-200 text-slate-700 font-semibold rounded-lg hover:bg-slate-300 disabled:opacity-50 transition"
+                                className="flex items-center gap-2 px-5 py-2.5 bg-slate-700 text-white font-semibold rounded-lg hover:bg-slate-600 disabled:opacity-50 transition"
                               >
-                                <RotateCcw className="w-4 h-4" /> Debloquer tout
+                                <ChevronRight className="w-5 h-5" /> Passer (0 point)
                               </button>
                             </div>
                           </>
