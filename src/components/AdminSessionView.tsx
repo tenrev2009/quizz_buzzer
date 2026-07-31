@@ -10,7 +10,7 @@ import { ArrowLeft, Play, Check, X, RotateCcw, RefreshCw, Users, Copy, ListCheck
 interface Props { sessionId: string; onBack: () => void; }
 
 export default function AdminSessionView({ sessionId, onBack }: Props) {
-  const { session, players, currentRound, blockedIds, refresh, ping } = useSessionRealtime(sessionId);
+  const { session, players, currentRound, blockedIds, refresh, ping, disconnected } = useSessionRealtime(sessionId);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -140,8 +140,14 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
   });
 
   const resetGame = () => run(async () => {
-    if (!confirm('Reinitialiser la partie et les scores ?')) return;
+    if (!confirm('Reinitialiser completement la partie (les joueurs devront se reconnecter) ?')) return;
     const { error } = await supabase.rpc('reset_game', { p_session_id: sessionId });
+    if (error) throw error;
+    setPlayedQuestionIds(new Set());
+  });
+
+  const newGame = () => run(async () => {
+    const { error } = await supabase.rpc('new_game', { p_session_id: sessionId });
     if (error) throw error;
     setPlayedQuestionIds(new Set());
   });
@@ -152,6 +158,18 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
+
+  if (disconnected) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center">
+        <p className="text-slate-700 font-semibold text-lg mb-2">Session introuvable</p>
+        <p className="text-slate-500 text-sm mb-4">La session a ete supprimee ou n'est pas accessible.</p>
+        <button onClick={onBack} className="px-5 py-2.5 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition">
+          Retour
+        </button>
+      </div>
+    );
+  }
 
   if (!session) {
     return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-500">Chargement...</div>;
@@ -173,8 +191,8 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
         <WinnerView
           winnerName={winner.profile?.display_name ?? 'Gagnant'}
           players={players.map(p => ({ name: p.profile?.display_name ?? 'Joueur', score: p.score }))}
-          onReset={resetGame}
-          onClose={onBack}
+          onReset={newGame}
+          onClose={resetGame}
           isAdmin={true}
         />
       )}

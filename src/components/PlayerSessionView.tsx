@@ -13,7 +13,7 @@ const BUZZ_COOLDOWN_MS = 500;
 
 export default function PlayerSessionView({ sessionId, onLeave }: Props) {
   const { profile } = useAuth();
-  const { session, players, currentRound, blockedIds, refresh, ping } = useSessionRealtime(sessionId);
+  const { session, players, currentRound, blockedIds, refresh, ping, disconnected } = useSessionRealtime(sessionId);
   const [buzzing, setBuzzing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const lastBuzzRef = useRef<number>(0);
@@ -57,8 +57,26 @@ export default function PlayerSessionView({ sessionId, onLeave }: Props) {
       });
   }, [currentRound?.id, profile?.id]);
 
+  if (disconnected || (!session && !profile)) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mb-4">
+          <Ban className="w-8 h-8 text-red-400" />
+        </div>
+        <h2 className="text-white text-xl font-bold mb-2">Connexion perdue</h2>
+        <p className="text-slate-400 mb-6">La session n'est plus accessible ou a ete reinitalisee.</p>
+        <button
+          onClick={onLeave}
+          className="px-6 py-3 bg-amber-400 text-slate-900 font-bold rounded-lg hover:bg-amber-300 transition"
+        >
+          Retour a l'accueil
+        </button>
+      </div>
+    );
+  }
+
   if (!session || !profile) {
-    return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-500">Chargement...</div>;
+    return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-400">Chargement...</div>;
   }
 
   const me = players.find(p => p.player_id === profile.id);

@@ -13,11 +13,29 @@ export function useSessionRealtime(sessionId: string | null) {
   const [state, setState] = useState<SessionState>({
     session: null, players: [], currentRound: null, blockedIds: [],
   });
+  const [disconnected, setDisconnected] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const failCountRef = useRef(0);
 
   const fetchAll = useCallback(async () => {
     if (!sessionId) return;
-    const { data: session } = await supabase.from('quiz_sessions').select('*').eq('id', sessionId).maybeSingle();
+
+    const { data: session, error: sessErr } = await supabase
+      .from('quiz_sessions')
+      .select('*')
+      .eq('id', sessionId)
+      .maybeSingle();
+
+    if (sessErr || !session) {
+      failCountRef.current += 1;
+      if (failCountRef.current >= 3) {
+        setDisconnected(true);
+      }
+      return;
+    }
+
+    failCountRef.current = 0;
+
     const { data: players } = await supabase
       .from('session_players')
       .select('*, profile:profiles(*)')
@@ -50,6 +68,8 @@ export function useSessionRealtime(sessionId: string | null) {
 
   useEffect(() => {
     if (!sessionId) return;
+    failCountRef.current = 0;
+    setDisconnected(false);
     fetchAll();
 
     const channel = supabase
@@ -72,5 +92,5 @@ export function useSessionRealtime(sessionId: string | null) {
     };
   }, [sessionId, fetchAll]);
 
-  return { ...state, refresh: fetchAll, ping };
+  return { ...state, disconnected, refresh: fetchAll, ping };
 }

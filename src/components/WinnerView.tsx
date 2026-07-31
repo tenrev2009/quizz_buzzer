@@ -65,7 +65,7 @@ export default function WinnerView({ winnerName, players, onReset, onClose, isAd
               onClick={onClose}
               className="flex items-center justify-center gap-2 px-6 py-3 bg-slate-700 text-white font-semibold rounded-lg hover:bg-slate-600 transition"
             >
-              <X className="w-5 h-5" /> Fermer la session
+              <X className="w-5 h-5" /> Reinitialiser (joueurs exclus)
             </button>
           </div>
         )}
