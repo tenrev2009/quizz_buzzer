@@ -5,7 +5,7 @@ import { useSessionRealtime } from '../hooks/useSessionRealtime';
 import Scoreboard from './Scoreboard';
 import WinnerView from './WinnerView';
 import type { QuizQuestion } from '../types';
-import { ArrowLeft, Zap, Lock, Ban, Clock, Trophy, Check, X } from 'lucide-react';
+import { ArrowLeft, Zap, Lock, Ban, Clock, Trophy, Check, X, Music } from 'lucide-react';
 
 interface Props { sessionId: string; onLeave: () => void; }
 
@@ -90,6 +90,7 @@ export default function PlayerSessionView({ sessionId, onLeave }: Props) {
 
   const isChoiceQuestion = currentQuestion && currentQuestion.question_type !== 'buzzer';
   const isBuzzerQuestion = !currentQuestion || currentQuestion.question_type === 'buzzer';
+  const isMusicMode = session.game_mode === 'music';
 
   const toMsg = (e: unknown): string => {
     if (!e) return 'Erreur inconnue';
@@ -236,10 +237,24 @@ export default function PlayerSessionView({ sessionId, onLeave }: Props) {
           </div>
         )}
 
-        {/* Buzzer mode (classic or buzzer-type question in QCM) */}
-        {currentRound && isBuzzerQuestion && (
+        {/* Buzzer mode (classic or buzzer-type question in QCM or Music mode) */}
+        {currentRound && (isBuzzerQuestion || isMusicMode) && (
           <>
-            {currentQuestion && (
+            {isMusicMode && currentRound.status === 'open' && !amBlocked && (
+              <div className="w-full max-w-lg mb-6 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <div className="relative">
+                    <div className="absolute inset-0 rounded-full bg-[#1DB954]/20 animate-ping" />
+                    <div className="relative w-16 h-16 rounded-full bg-[#1DB954]/10 border-2 border-[#1DB954] flex items-center justify-center">
+                      <Music className="w-8 h-8 text-[#1DB954]" />
+                    </div>
+                  </div>
+                  <p className="text-[#1DB954] font-bold text-lg">Ecoutez le morceau...</p>
+                  <p className="text-slate-400 text-sm">Buzzez quand vous reconnaissez la chanson !</p>
+                </div>
+              </div>
+            )}
+            {currentQuestion && !isMusicMode && (
               <div className="w-full max-w-lg mb-6 bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
                 <p className="text-white text-xl font-bold">{currentQuestion.question_text}</p>
               </div>

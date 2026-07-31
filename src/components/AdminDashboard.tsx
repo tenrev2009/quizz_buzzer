@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import type { GameMode, QuizSession } from '../types';
-import { Plus, LogOut, Zap, Play, Trash2, HelpCircle, Radio } from 'lucide-react';
+import { Plus, LogOut, Zap, Play, Trash2, HelpCircle, Radio, Music } from 'lucide-react';
 import AdminSessionView from './AdminSessionView';
 
 function randomCode() {
@@ -138,6 +138,13 @@ export default function AdminDashboard() {
                   >
                     <HelpCircle className="w-4 h-4" /> QCM
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setGameMode('music')}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition ${gameMode === 'music' ? 'bg-[#1DB954] border-[#1DB954] text-white' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <Music className="w-4 h-4" /> Musical
+                  </button>
                 </div>
               </div>
             </div>
@@ -179,7 +186,7 @@ export default function AdminDashboard() {
               <p className="text-xs text-slate-500 mb-4">
                 Objectif: {s.target_score} points
                 <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">
-                  {s.game_mode === 'qcm' ? <><HelpCircle className="w-3 h-3" />QCM</> : <><Radio className="w-3 h-3" />Buzzer</>}
+                  {s.game_mode === 'qcm' ? <><HelpCircle className="w-3 h-3" />QCM</> : s.game_mode === 'music' ? <><Music className="w-3 h-3" />Musical</> : <><Radio className="w-3 h-3" />Buzzer</>}
                 </span>
               </p>
               <div className="flex gap-2">

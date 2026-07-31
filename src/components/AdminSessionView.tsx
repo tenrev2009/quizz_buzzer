@@ -1,11 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useSessionRealtime } from '../hooks/useSessionRealtime';
+import { useSpotifyAuth } from '../hooks/useSpotifyAuth';
 import Scoreboard from './Scoreboard';
 import WinnerView from './WinnerView';
 import QuizEditor from './QuizEditor';
-import type { QuizQuestion } from '../types';
-import { ArrowLeft, Play, Check, X, RotateCcw, RefreshCw, Users, Copy, ListChecks, ChevronRight } from 'lucide-react';
+import SpotifyConnect from './SpotifyConnect';
+import SpotifyPlaylistPicker from './SpotifyPlaylistPicker';
+import MusicPlayer from './MusicPlayer';
+import type { QuizQuestion, MusicSessionConfig } from '../types';
+import { ArrowLeft, Play, Check, X, RotateCcw, RefreshCw, Users, Copy, ListChecks, ChevronRight, Music } from 'lucide-react';
 
 interface Props { sessionId: string; onBack: () => void; }
 
@@ -20,6 +24,43 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
   const [playedQuestionIds, setPlayedQuestionIds] = useState<Set<string>>(new Set());
 
   const isQcm = session?.game_mode === 'qcm';
+  const isMusic = session?.game_mode === 'music';
+
+  const spotify = useSpotifyAuth();
+  const [musicConfig, setMusicConfig] = useState<MusicSessionConfig | null>(null);
+
+  const fetchMusicConfig = useCallback(async () => {
+    const { data } = await supabase
+      .from('music_session_config')
+      .select('*')
+      .eq('session_id', sessionId)
+      .maybeSingle();
+    setMusicConfig(data as MusicSessionConfig | null);
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (isMusic) fetchMusicConfig();
+  }, [isMusic, fetchMusicConfig]);
+
+  const selectPlaylist = async (playlist: { id: string; name: string }) => {
+    const playbackMode = spotify.isPremium ? 'premium' : 'preview';
+    const { error } = await supabase
+      .from('music_session_config')
+      .upsert({
+        session_id: sessionId,
+        spotify_playlist_id: playlist.id,
+        spotify_playlist_name: playlist.name,
+        playback_mode: playbackMode,
+      }, { onConflict: 'session_id' });
+    if (!error) fetchMusicConfig();
+  };
+
+  const onMusicTrackStarted = () => {
+    run(async () => {
+      const { error } = await supabase.rpc('start_round', { p_session_id: sessionId });
+      if (error) throw error;
+    });
+  };
 
   const fetchQuestions = async () => {
     const { data } = await supabase
@@ -254,7 +295,7 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                 </div>
 
                 {/* No current round - Buzzer mode */}
-                {!currentRound && !isQcm && (
+                {!currentRound && !isQcm && !isMusic && (
                   <div className="text-center py-8">
                     <p className="text-slate-500 mb-4">Aucune manche en cours</p>
                     <button
@@ -264,6 +305,68 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                     >
                       <Play className="w-5 h-5" /> Demarrer la manche
                     </button>
+                  </div>
+                )}
+
+                {/* No current round - Music mode */}
+                {!currentRound && isMusic && (
+                  <div className="space-y-5">
+                    {!spotify.connected && (
+                      <SpotifyConnect />
+                    )}
+                    {spotify.connected && !musicConfig && spotify.accessToken && (
+                      <div>
+                        <p className="text-slate-700 font-medium mb-3">Choisissez une playlist :</p>
+                        <SpotifyPlaylistPicker
+                          accessToken={spotify.accessToken}
+                          onSelect={selectPlaylist}
+                        />
+                      </div>
+                    )}
+                    {spotify.connected && musicConfig && spotify.accessToken && (
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                          <Music className="w-5 h-5 text-[#1DB954]" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-800 truncate">{musicConfig.spotify_playlist_name}</p>
+                            <p className="text-xs text-slate-500">{musicConfig.playback_mode === 'premium' ? 'Lecture complete' : 'Extraits 30s'}</p>
+                          </div>
+                          <button
+                            onClick={() => { setMusicConfig(null); supabase.from('music_session_config').delete().eq('session_id', sessionId); }}
+                            className="text-xs text-slate-500 hover:text-red-500 transition"
+                          >
+                            Changer
+                          </button>
+                        </div>
+                        <MusicPlayer
+                          sessionId={sessionId}
+                          accessToken={spotify.accessToken}
+                          playbackMode={musicConfig.playback_mode}
+                          config={musicConfig}
+                          onTrackStarted={onMusicTrackStarted}
+                          roundStatus={null}
+                        />
+                        <p className="text-center text-sm text-slate-500">Cliquez play pour lancer le premier morceau et demarrer la manche</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Current round - Music mode */}
+                {currentRound && isMusic && spotify.connected && musicConfig && spotify.accessToken && (
+                  <div className="space-y-4">
+                    <MusicPlayer
+                      sessionId={sessionId}
+                      accessToken={spotify.accessToken}
+                      playbackMode={musicConfig.playback_mode}
+                      config={musicConfig}
+                      onTrackStarted={() => {
+                        fetchMusicConfig();
+                        refresh();
+                        ping();
+                      }}
+                      roundStatus={currentRound.status}
+                    />
                   </div>
                 )}
 
@@ -472,7 +575,7 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
                             <X className="w-5 h-5" /> Mauvaise reponse
                           </button>
                         </div>
-                        {isQcm && (
+                        {(isQcm || isMusic) && (
                           <button
                             onClick={skipQuestion}
                             disabled={loading}

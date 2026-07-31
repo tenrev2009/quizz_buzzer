@@ -1,10 +1,25 @@
+import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AuthScreen from './components/AuthScreen';
 import AdminDashboard from './components/AdminDashboard';
 import PlayerSessionView from './components/PlayerSessionView';
+import SpotifyCallback from './components/SpotifyCallback';
 
 function Shell() {
   const { loading, userId, profile, activeSessionId, setActiveSessionId, signOut } = useAuth();
+  const [spotifyCode, setSpotifyCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (window.location.pathname === '/spotify-callback') {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      if (code) setSpotifyCode(code);
+    }
+  }, []);
+
+  if (spotifyCode) {
+    return <SpotifyCallback code={spotifyCode} onDone={() => { setSpotifyCode(null); window.history.replaceState({}, '', '/'); }} />;
+  }
 
   if (loading) {
     return (

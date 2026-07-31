@@ -1,5 +1,26 @@
 export type Role = 'admin' | 'player';
-export type GameMode = 'buzzer' | 'qcm';
+export type GameMode = 'buzzer' | 'qcm' | 'music';
+
+export interface MusicSessionConfig {
+  session_id: string;
+  spotify_playlist_id: string;
+  spotify_playlist_name: string | null;
+  playback_mode: 'preview' | 'premium';
+  current_track_uri: string | null;
+  current_track_name: string | null;
+  current_track_artist: string | null;
+  current_track_preview_url: string | null;
+  played_track_uris: string[];
+  created_at: string;
+}
+
+export interface SpotifyToken {
+  user_id: string;
+  access_token: string;
+  expires_at: string;
+  product: string | null;
+  spotify_user_id: string | null;
+}
 export type QuestionType = 'choice_2' | 'choice_4' | 'buzzer';
 
 export interface Profile {
