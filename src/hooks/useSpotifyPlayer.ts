@@ -65,6 +65,9 @@ export function useSpotifyPlayer(
       });
 
       player.addListener('not_ready', () => {
+        // Le peripherique n'existe plus cote Spotify : garder son id conduirait
+        // a un « Device not found » au prochain ordre de lecture.
+        deviceIdRef.current = null;
         setState(s => ({ ...s, ready: false }));
       });
 
@@ -103,6 +106,7 @@ export function useSpotifyPlayer(
     }
 
     return () => {
+      deviceIdRef.current = null;
       if (playerRef.current) {
         playerRef.current.disconnect();
         playerRef.current = null;
@@ -118,6 +122,23 @@ export function useSpotifyPlayer(
         audioRef.current = null;
       }
     };
+  }, []);
+
+  // Reconnecte le lecteur si besoin et attend qu'un peripherique soit annonce.
+  const ensureDevice = useCallback(async (): Promise<string | null> => {
+    if (deviceIdRef.current) return deviceIdRef.current;
+    if (!playerRef.current) return null;
+    try {
+      await playerRef.current.connect();
+    } catch {
+      return null;
+    }
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      if (deviceIdRef.current) return deviceIdRef.current;
+      await new Promise(r => setTimeout(r, 200));
+    }
+    return null;
   }, []);
 
   const play = useCallback(async (uriOrPreviewUrl: string) => {
@@ -156,11 +177,6 @@ export function useSpotifyPlayer(
         setState(s => ({ ...s, error: 'Jeton Spotify indisponible.' }));
         return;
       }
-      if (!deviceIdRef.current) {
-        setState(s => ({ ...s, error: "Le lecteur Spotify n'est pas encore pret. Patientez quelques secondes puis reessayez." }));
-        return;
-      }
-
       // Les navigateurs bloquent la lecture non declenchee par l'utilisateur.
       // activateElement doit etre appele dans la foulee du clic.
       try {
@@ -169,14 +185,31 @@ export function useSpotifyPlayer(
         // Sans importance si le navigateur n'en a pas besoin.
       }
 
-      const res = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ uris: [uriOrPreviewUrl] }),
-      });
+      const sendPlay = (device: string) =>
+        fetch(`https://api.spotify.com/v1/me/player/play?device_id=${device}`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ uris: [uriOrPreviewUrl] }),
+        });
+
+      let device = await ensureDevice();
+      if (!device) {
+        setState(s => ({ ...s, error: "Le lecteur Spotify n'a pas pu s'enregistrer. Verifiez que l'onglet est au premier plan, puis reessayez." }));
+        return;
+      }
+
+      let res = await sendPlay(device);
+
+      // Spotify peut avoir retire le peripherique entre son annonce et l'ordre
+      // de lecture : on en obtient un neuf et on retente une fois.
+      if (res.status === 404) {
+        deviceIdRef.current = null;
+        device = await ensureDevice();
+        if (device) res = await sendPlay(device);
+      }
 
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
@@ -187,7 +220,7 @@ export function useSpotifyPlayer(
 
       setState(s => ({ ...s, isPlaying: true, position: 0, error: null }));
     }
-  }, [mode, accessToken]);
+  }, [mode, accessToken, ensureDevice]);
 
   const pause = useCallback(() => {
     if (mode === 'preview') {
