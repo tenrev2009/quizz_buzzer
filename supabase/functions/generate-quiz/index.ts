@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import Anthropic from "npm:@anthropic-ai/sdk@0.70.0";
+import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,7 +9,24 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
+// Repli facultatif : une cle posee dans les secrets de la fonction sert a tous
+// les administrateurs. La cle saisie dans les parametres a la priorite.
+const FALLBACK_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+// La table admin_settings n'a aucune policy SELECT : seule la service role,
+// qui contourne RLS, peut relire la cle.
+async function getApiKey(userId: string): Promise<string> {
+  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  const { data } = await admin
+    .from("admin_settings")
+    .select("anthropic_api_key")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const stored = (data?.anthropic_api_key ?? "").trim();
+  return stored || FALLBACK_API_KEY;
+}
 
 // Le mode musical n'a pas de questions ecrites : seuls ces trois types
 // correspondent a la contrainte question_type de quiz_questions.
@@ -99,7 +117,7 @@ Calibrage de la difficulté :
 
 Écris en français.`;
 
-async function generate(body: RequestBody): Promise<GeneratedQuestion[]> {
+async function generate(body: RequestBody, apiKey: string): Promise<GeneratedQuestion[]> {
   const theme = (body.theme ?? "").trim();
   const difficulty = body.difficulty ?? "moyen";
   const count2 = Math.max(0, Math.min(30, body.count_2 ?? 0));
@@ -110,7 +128,7 @@ async function generate(body: RequestBody): Promise<GeneratedQuestion[]> {
   if (!theme) throw new Error("Le theme est obligatoire.");
   if (total === 0) throw new Error("Demandez au moins une question.");
 
-  const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+  const client = new Anthropic({ apiKey });
 
   const parts = [
     `Thème : ${theme}`,
@@ -202,21 +220,36 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
     return json({ error: "Method not allowed" }, 405);
   }
-  if (!getUserId(req)) {
+  const userId = getUserId(req);
+  if (!userId) {
     return json({ error: "Unauthorized" }, 401);
   }
-  if (!ANTHROPIC_API_KEY) {
+
+  const apiKey = await getApiKey(userId);
+  if (!apiKey) {
     return json(
-      { error: "ANTHROPIC_API_KEY absente des secrets de la fonction." },
-      500,
+      {
+        error:
+          "Aucune cle API Claude enregistree. Ajoutez-la dans Parametres, en haut du tableau de bord.",
+      },
+      400,
     );
   }
 
   try {
     const body = (await req.json()) as RequestBody;
-    const questions = await generate(body);
+    const questions = await generate(body, apiKey);
     return json({ questions });
   } catch (e) {
-    return json({ error: e instanceof Error ? e.message : String(e) }, 400);
+    const detail = e instanceof Error ? e.message : String(e);
+    // Une cle invalide se manifeste par un 401 d'Anthropic : le message brut
+    // n'aiderait pas, on dit ou corriger.
+    if (/401|authentication|invalid x-api-key/i.test(detail)) {
+      return json(
+        { error: "Cle API Claude refusee. Verifiez-la dans Parametres." },
+        400,
+      );
+    }
+    return json({ error: detail }, 400);
   }
 });
