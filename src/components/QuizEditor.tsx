@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import type { QuizQuestion, QuestionType } from '../types';
 import QuizGenerator from './QuizGenerator';
 import QuizImport from './QuizImport';
+import { describeWriteError } from '../lib/supabaseErrors';
 import { Plus, Trash2, GripVertical, Check, CircleDot, Zap } from 'lucide-react';
 
 interface Props {
@@ -24,6 +25,7 @@ const TYPE_ICONS: Record<QuestionType, typeof CircleDot> = {
 export default function QuizEditor({ sessionId }: Props) {
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const fetchQuestions = async () => {
     const { data } = await supabase
@@ -51,8 +53,12 @@ export default function QuizEditor({ sessionId }: Props) {
   };
 
   const updateQuestion = async (id: string, updates: Partial<QuizQuestion>) => {
-    await supabase.from('quiz_questions').update(updates).eq('id', id);
+    // L'etat local suit la frappe ; l'ecriture est verifiee ensuite, sinon une
+    // colonne absente ferait croire a une saisie enregistree.
     setQuestions(prev => prev.map(q => q.id === id ? { ...q, ...updates } : q));
+    const { error } = await supabase.from('quiz_questions').update(updates).eq('id', id);
+    if (error) setSaveError(describeWriteError(error.message));
+    else setSaveError(null);
   };
 
   const deleteQuestion = async (id: string) => {
@@ -102,6 +108,12 @@ export default function QuizEditor({ sessionId }: Props) {
         startPosition={questions.length}
         onImported={fetchQuestions}
       />
+
+      {saveError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 whitespace-pre-wrap break-words">
+          {saveError}
+        </div>
+      )}
 
       {questions.length === 0 && (
         <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl">

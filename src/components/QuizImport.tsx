@@ -1,7 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
-import { supabase } from '../lib/supabase';
 import { parseQuiz, CSV_TEMPLATE, EXTERNAL_AI_PROMPT } from '../lib/quizImport';
-import { describeWriteError } from '../lib/supabaseErrors';
+import { insertQuestions, droppedAnswersNotice } from '../lib/insertQuestions';
 import {
   Upload, Loader2, ChevronDown, ChevronUp, FileText, Copy, Check, AlertTriangle,
 } from 'lucide-react';
@@ -52,10 +51,13 @@ export default function QuizImport({ sessionId, startPosition, onImported }: Pro
         position: startPosition + i,
       }));
 
-      const { error: insertError } = await supabase.from('quiz_questions').insert(rows);
-      if (insertError) throw new Error(describeWriteError(insertError.message));
+      const { inserted, droppedAnswers } = await insertQuestions(rows);
 
-      setNotice(`${rows.length} question(s) importee(s).`);
+      setNotice(
+        droppedAnswers > 0
+          ? `${inserted} question(s) importee(s). ${droppedAnswersNotice(droppedAnswers)}`
+          : `${inserted} question(s) importee(s).`
+      );
       setText('');
       if (fileRef.current) fileRef.current.value = '';
       onImported();
