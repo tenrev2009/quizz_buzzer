@@ -76,9 +76,10 @@ export function useSpotifyPlayer(
       });
 
       player.addListener('not_ready', () => {
-        // Le peripherique n'existe plus cote Spotify : garder son id conduirait
-        // a un « Device not found » au prochain ordre de lecture.
-        deviceIdRef.current = null;
+        // On garde volontairement l'identifiant : 'not_ready' se declenche
+        // frequemment sans que le peripherique soit perdu, et le jeter ici
+        // imposait un reenregistrement de plusieurs secondes a chaque lecture.
+        // Un identifiant reellement mort est detecte par le 404 de play().
         setState(s => ({ ...s, ready: false }));
       });
 
@@ -165,25 +166,26 @@ export function useSpotifyPlayer(
   const ensureDevice = useCallback(async (): Promise<string | null> => {
     if (deviceIdRef.current) return deviceIdRef.current;
 
-    if (playerRef.current) {
-      try {
-        await playerRef.current.connect();
-      } catch {
-        // On tentera quand meme la voie API ci-dessous.
-      }
-      const deadline = Date.now() + 8000;
-      while (Date.now() < deadline) {
-        if (deviceIdRef.current) return deviceIdRef.current;
-        await new Promise(r => setTimeout(r, 200));
-      }
-    }
-
-    // 'ready' n'est pas arrive : Spotify connait peut-etre malgre tout notre
-    // peripherique. On le retrouve par son nom.
+    // Voie rapide : Spotify connait deja notre peripherique dans la plupart
+    // des cas. Un aller-retour d'API coute bien moins qu'un reenregistrement.
     const fromApi = (await listDevices()).find(d => d.name === PLAYER_NAME);
     if (fromApi) {
       deviceIdRef.current = fromApi.id;
       return fromApi.id;
+    }
+
+    // Voie lente, reservee au cas ou le lecteur est reellement absent.
+    if (playerRef.current) {
+      try {
+        await playerRef.current.connect();
+      } catch {
+        return null;
+      }
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        if (deviceIdRef.current) return deviceIdRef.current;
+        await new Promise(r => setTimeout(r, 200));
+      }
     }
     return null;
   }, [listDevices]);
@@ -296,32 +298,22 @@ export function useSpotifyPlayer(
       }
 
       setState(s => ({ ...s, isPlaying: true, position: 0, error: null }));
-
-      // Un ordre accepte ne garantit pas que le son sorte de ce navigateur :
-      // un autre appareil Spotify actif peut avoir garde la main.
-      window.setTimeout(async () => {
-        const st = await playerRef.current?.getCurrentState?.();
-        if (!st) {
-          setState(s => ({
-            ...s,
-            error: "Spotify a accepte l'ordre mais aucune lecture n'a demarre dans ce navigateur. Un autre appareil Spotify a probablement la main : fermez l'application Spotify sur vos autres appareils, puis relancez.",
-          }));
-        }
-      }, 2500);
     }
   }, [mode, accessToken, ensureDevice, listDevices]);
 
   // Le SDK repond « no list was loaded » si on le pilote avant qu'une piste
   // n'ait ete chargee. getCurrentState() vaut null dans ce cas.
-  const hasLoadedTrack = useCallback(async () => {
+  const getSdkState = useCallback(async (): Promise<{ paused: boolean; position: number; duration: number } | null> => {
     const p = playerRef.current;
-    if (!p) return false;
+    if (!p) return null;
     try {
-      return !!(await p.getCurrentState());
+      return (await p.getCurrentState()) ?? null;
     } catch {
-      return false;
+      return null;
     }
   }, []);
+
+  const hasLoadedTrack = useCallback(async () => !!(await getSdkState()), [getSdkState]);
 
   const pause = useCallback(async () => {
     if (mode === 'preview') {
@@ -349,12 +341,16 @@ export function useSpotifyPlayer(
       setState(s => ({ ...s, isPlaying: true }));
       return;
     }
-    if (await hasLoadedTrack()) {
+    const st = await getSdkState();
+    // Une piste arrivee a son terme reste « chargee » mais en pause a la fin :
+    // un resume() n'y produirait aucun son, il faut la relancer.
+    const finished = !!st && st.paused && st.position >= Math.max(0, st.duration - 1500);
+    if (st && !finished) {
       await playerRef.current?.resume();
       return;
     }
     if (uri) await play(uri);
-  }, [mode, hasLoadedTrack, play]);
+  }, [mode, getSdkState, play]);
 
   const setVolume = useCallback((vol: number) => {
     if (mode === 'preview') {

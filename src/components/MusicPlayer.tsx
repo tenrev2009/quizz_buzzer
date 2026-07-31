@@ -107,13 +107,10 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
     const playedUris = config?.played_track_uris ?? [];
     let available = tracks.filter(t => !playedUris.includes(t.uri));
 
-    if (available.length === 0) {
-      await supabase
-        .from('music_session_config')
-        .update({ played_track_uris: [] })
-        .eq('session_id', sessionId);
-      available = tracks;
-    }
+    // Toute la playlist a ete jouee : on repart du debut. La remise a zero est
+    // persistee plus bas, avec le reste, pour ne pas retarder le son.
+    const exhausted = available.length === 0;
+    if (exhausted) available = tracks;
 
     if (playbackMode === 'preview') {
       available = available.filter(t => t.preview_url);
@@ -131,6 +128,12 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
     const randomIndex = Math.floor(Math.random() * available.length);
     const track = available[randomIndex];
 
+    // Le son d'abord : faire precer deux ecritures reseau rendait le bouton
+    // lent a repondre alors que rien n'en dependait.
+    const playTarget = playbackMode === 'premium' ? track.uri : track.preview_url!;
+    await player.play(playTarget);
+    setTrackLoading(false);
+
     await supabase
       .from('music_session_config')
       .update({
@@ -138,13 +141,10 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
         current_track_name: track.name,
         current_track_artist: track.artists.map(a => a.name).join(', '),
         current_track_preview_url: track.preview_url ?? null,
-        played_track_uris: [...playedUris, track.uri],
+        played_track_uris: exhausted ? [track.uri] : [...playedUris, track.uri],
       })
       .eq('session_id', sessionId);
 
-    const playTarget = playbackMode === 'premium' ? track.uri : track.preview_url!;
-    await player.play(playTarget);
-    setTrackLoading(false);
     onTrackStarted();
   }, [tracks, config, sessionId, playbackMode, player, onTrackStarted]);
 
@@ -245,11 +245,16 @@ export default function MusicPlayer({ sessionId, accessToken, playbackMode, conf
             <button
               onClick={() => {
                 player.activate();
-                if (config?.current_track_uri) {
-                  void player.resumeOrPlay(config.current_track_uri);
-                } else {
+                if (!config?.current_track_uri) {
                   void playNextTrack();
+                  return;
                 }
+                // Sans indicateur d'attente, un clic sans effet visible en
+                // provoquait d'autres, qui se chevauchaient.
+                setTrackLoading(true);
+                void player
+                  .resumeOrPlay(config.current_track_uri)
+                  .finally(() => setTrackLoading(false));
               }}
               disabled={trackLoading}
               className="w-12 h-12 rounded-full bg-white text-slate-900 flex items-center justify-center hover:scale-105 transition disabled:opacity-50"
