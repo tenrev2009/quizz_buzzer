@@ -85,8 +85,20 @@ export function useSessionRealtime(sessionId: string | null) {
 
     const poll = setInterval(fetchAll, 2500);
 
+    // Les navigateurs brident les minuteurs des onglets en arriere-plan : au
+    // retour de veille, le poll peut avoir plusieurs secondes de retard et le
+    // WebSocket etre tombe. On resynchronise immediatement plutot que de
+    // laisser le joueur devant un ecran perime.
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') fetchAll();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('online', fetchAll);
+
     return () => {
       clearInterval(poll);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('online', fetchAll);
       supabase.removeChannel(channel);
       channelRef.current = null;
     };

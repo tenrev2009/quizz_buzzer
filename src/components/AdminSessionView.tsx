@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useSessionRealtime } from '../hooks/useSessionRealtime';
 import { useSpotifyAuth } from '../hooks/useSpotifyAuth';
+import { useWakeLock } from '../hooks/useWakeLock';
 import Scoreboard from './Scoreboard';
 import WinnerView from './WinnerView';
 import QuizEditor from './QuizEditor';
@@ -26,6 +27,10 @@ export default function AdminSessionView({ sessionId, onBack }: Props) {
 
   const isQcm = session?.game_mode === 'qcm';
   const isMusic = session?.game_mode === 'music';
+
+  // L'animateur pilote la partie depuis son ecran : une veille lui fait perdre
+  // la main au moment de trancher.
+  useWakeLock(session?.status !== 'finished');
 
   const spotify = useSpotifyAuth();
   const [musicConfig, setMusicConfig] = useState<MusicSessionConfig | null>(null);

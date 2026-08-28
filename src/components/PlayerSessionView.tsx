@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useSessionRealtime } from '../hooks/useSessionRealtime';
+import { useWakeLock } from '../hooks/useWakeLock';
 import Scoreboard from './Scoreboard';
 import WinnerView from './WinnerView';
 import type { QuizQuestion } from '../types';
@@ -15,6 +16,10 @@ const BUZZ_COOLDOWN_MS = 500;
 export default function PlayerSessionView({ sessionId, onLeave }: Props) {
   const { profile } = useAuth();
   const { session, players, currentRound, blockedIds, refresh, ping, disconnected } = useSessionRealtime(sessionId);
+
+  // Tant que la partie n'est pas finie, l'ecran du joueur doit rester allume :
+  // reveiller son telephone avant de pouvoir buzzer lui coute la manche.
+  const wakeLock = useWakeLock(session?.status !== 'finished');
   const [buzzing, setBuzzing] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const lastBuzzRef = useRef<number>(0);
@@ -167,6 +172,18 @@ export default function PlayerSessionView({ sessionId, onLeave }: Props) {
           </div>
         </div>
       </header>
+
+      {/* Le joueur ne doit pas decouvrir en pleine manche que son ecran s'eteint :
+          on le previent quand le maintien n'est pas possible. */}
+      {wakeLock.settled && !wakeLock.held && (
+        <div className="bg-slate-800/60 border-b border-slate-700 px-4 py-2">
+          <p className="max-w-4xl mx-auto text-center text-[11px] text-slate-400">
+            {wakeLock.supported
+              ? "L'ecran peut s'eteindre pendant la partie. Touchez-le de temps en temps, ou augmentez le delai de veille de votre telephone."
+              : "Votre navigateur ne sait pas empecher la mise en veille. Augmentez le delai de veille dans les reglages de votre telephone pour ne pas perdre de temps au buzzer."}
+          </p>
+        </div>
+      )}
 
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-8 max-w-4xl mx-auto w-full">
         {/* Waiting for round */}
