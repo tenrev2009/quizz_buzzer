@@ -36,19 +36,12 @@ export default function AdminSettings() {
     setError(null);
     setNotice(null);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Session expiree, reconnectez-vous.');
-
-      // Sans .select(), supabase-js envoie Prefer: return=minimal — necessaire
-      // ici, car relire la ligne demanderait une policy SELECT qui n'existe pas.
-      const { error: upsertError } = await supabase
-        .from('admin_settings')
-        .upsert(
-          { user_id: user.id, anthropic_api_key: key, updated_at: new Date().toISOString() },
-          { onConflict: 'user_id' }
-        );
-
-      if (upsertError) throw new Error(`Enregistrement impossible : ${upsertError.message}`);
+      // Ecriture par fonction serveur : un upsert direct devrait relire la
+      // ligne pour resoudre le conflit, ce que l'absence de policy SELECT
+      // interdit. La fonction determine le proprietaire depuis auth.uid(),
+      // l'appelant n'a donc pas a transmettre son identifiant.
+      const { error: rpcError } = await supabase.rpc('set_anthropic_key', { p_key: key });
+      if (rpcError) throw new Error(`Enregistrement impossible : ${rpcError.message}`);
 
       setValue('');
       setNotice('Cle enregistree.');
@@ -64,15 +57,9 @@ export default function AdminSettings() {
     setSaving(true);
     setError(null);
     setNotice(null);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { error: delError } = await supabase
-        .from('admin_settings')
-        .delete()
-        .eq('user_id', user.id);
-      if (delError) setError(delError.message);
-      else setNotice('Cle supprimee.');
-    }
+    const { error: rpcError } = await supabase.rpc('clear_anthropic_key');
+    if (rpcError) setError(rpcError.message);
+    else setNotice('Cle supprimee.');
     await refresh();
     setSaving(false);
   };
