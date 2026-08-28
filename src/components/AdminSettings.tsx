@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { describeWriteError } from '../lib/supabaseErrors';
 import { Settings, Loader2, Check, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface KeyStatus {
@@ -20,7 +21,7 @@ export default function AdminSettings() {
   const refresh = useCallback(async () => {
     const { data, error: rpcError } = await supabase.rpc('anthropic_key_status');
     if (rpcError) {
-      setError(`Statut indisponible : ${rpcError.message}`);
+      setError(describeWriteError(rpcError.message));
       return;
     }
     const row = Array.isArray(data) ? data[0] : data;
@@ -41,7 +42,7 @@ export default function AdminSettings() {
       // interdit. La fonction determine le proprietaire depuis auth.uid(),
       // l'appelant n'a donc pas a transmettre son identifiant.
       const { error: rpcError } = await supabase.rpc('set_anthropic_key', { p_key: key });
-      if (rpcError) throw new Error(`Enregistrement impossible : ${rpcError.message}`);
+      if (rpcError) throw new Error(describeWriteError(rpcError.message));
 
       setValue('');
       setNotice('Cle enregistree.');
@@ -58,7 +59,7 @@ export default function AdminSettings() {
     setError(null);
     setNotice(null);
     const { error: rpcError } = await supabase.rpc('clear_anthropic_key');
-    if (rpcError) setError(rpcError.message);
+    if (rpcError) setError(describeWriteError(rpcError.message));
     else setNotice('Cle supprimee.');
     await refresh();
     setSaving(false);
@@ -129,7 +130,7 @@ export default function AdminSettings() {
           )}
 
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 whitespace-pre-wrap break-words">
               {error}
             </div>
           )}

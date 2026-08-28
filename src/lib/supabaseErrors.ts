@@ -20,6 +20,17 @@ export function describeWriteError(message: string): string {
     );
   }
 
+  const missingFunction = message.match(/Could not find the function public\.([a-z_]+)/i);
+  if (missingFunction) {
+    return (
+      `La fonction « ${missingFunction[1]} » n'existe pas encore dans votre base.\n\n` +
+      `La migration correspondante, dans supabase/migrations, n'a pas ete appliquee. ` +
+      `Executez-la depuis Bolt ou le SQL Editor de Supabase, puis terminez par :\n` +
+      `   NOTIFY pgrst, 'reload schema';\n\n` +
+      `Rechargez ensuite la page (Ctrl+Shift+R).`
+    );
+  }
+
   if (/schema cache/i.test(message) && /relation|table/i.test(message)) {
     return (
       `Table introuvable dans votre base : une migration n'a pas ete appliquee. ` +
